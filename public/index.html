@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure DevOps MCP Web Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .status-card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+
+        .status-connected {
+            background-color: #4CAF50;
+        }
+
+        .status-disconnected {
+            background-color: #f44336;
+        }
+
+        .status-loading {
+            background-color: #ff9800;
+            animation: pulse 1.5s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { opacity: 1; }
+            to { opacity: 0.4; }
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+
+        .card h3 {
+            color: #4A90E2;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        .card-icon {
+            font-size: 1.5rem;
+            margin-right: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #4A90E2;
+            box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #4A90E2, #357ABD);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d, #545b62);
+        }
+
+        .result-area {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 15px;
+            border-left: 4px solid #4A90E2;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .error {
+            background: #fff5f5;
+            border-left-color: #f44336;
+            color: #c62828;
+        }
+
+        .success {
+            background: #f1f8e9;
+            border-left-color: #4CAF50;
+            color: #2e7d32;
+        }
+
+        .api-endpoints {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .api-endpoints h3 {
+            color: #4A90E2;
+            margin-bottom: 20px;
+        }
+
+        .endpoint {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            border-left: 4px solid #4A90E2;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            margin-right: 10px;
+            text-transform: uppercase;
+        }
+
+        .get { background: #4CAF50; color: white; }
+        .post { background: #2196F3; color: white; }
+        .put { background: #ff9800; color: white; }
+        .delete { background: #f44336; color: white; }
+
+        .footer {
+            text-align: center;
+            color: white;
+            opacity: 0.8;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 Azure DevOps MCP</h1>
+            <p>Web Interface for Azure DevOps Integration</p>
+        </div>
+
+        <div class="status-card">
+            <h3>
+                <span id="statusIndicator" class="status-indicator status-loading"></span>
+                Connection Status
+            </h3>
+            <p id="statusText">Checking connection...</p>
+            <div id="statusDetails"></div>
+        </div>
+
+        <div class="card-grid">
+            <!-- Pull Request Card -->
+            <div class="card">
+                <h3><span class="card-icon">🔄</span>Pull Request</h3>
+                <div class="form-group">
+                    <label for="repositoryId">Repository ID:</label>
+                    <input type="text" id="repositoryId" class="form-control" placeholder="e.g., 5d794f1b-8665-4880-93a3-7b23e129814e">
+                </div>
+                <div class="form-group">
+                    <label for="pullRequestId">Pull Request ID:</label>
+                    <input type="number" id="pullRequestId" class="form-control" placeholder="e.g., 10209">
+                </div>
+                <button class="btn" onclick="getPullRequest()">Get Pull Request</button>
+                <button class="btn btn-secondary" onclick="getPullRequestComments()">Get Comments</button>
+                <div id="prResult" class="result-area" style="display: none;"></div>
+            </div>
+
+            <!-- Work Items Card -->
+            <div class="card">
+                <h3><span class="card-icon">📋</span>Work Items</h3>
+                <div class="form-group">
+                    <label for="workItemId">Work Item ID:</label>
+                    <input type="number" id="workItemId" class="form-control" placeholder="e.g., 18484">
+                </div>
+                <button class="btn" onclick="getWorkItem()">Get Work Item</button>
+                <div class="form-group">
+                    <label for="searchQuery">Search Query (WIQL):</label>
+                    <input type="text" id="searchQuery" class="form-control" placeholder="e.g., SELECT * FROM WorkItems WHERE [Work Item Type] = 'User Story'">
+                </div>
+                <button class="btn btn-secondary" onclick="searchWorkItems()">Search</button>
+                <div id="workItemResult" class="result-area" style="display: none;"></div>
+            </div>
+
+            <!-- Repositories Card -->
+            <div class="card">
+                <h3><span class="card-icon">📂</span>Repositories</h3>
+                <button class="btn" onclick="getRepositories()">List Repositories</button>
+                <div id="repoResult" class="result-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="api-endpoints">
+            <h3>📡 Available API Endpoints</h3>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/health</strong> - Health check
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/api/test-connection</strong> - Test Azure DevOps connection
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/api/repositories</strong> - List all repositories
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/api/pullrequests/:repositoryId/:pullRequestId</strong> - Get pull request details
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/api/pullrequests/:repositoryId/:pullRequestId/comments</strong> - Get pull request comments
+            </div>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <strong>/api/pullrequests/:repositoryId/:pullRequestId/comments</strong> - Add pull request comment
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/api/workitems/:workItemId</strong> - Get work item details
+            </div>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <strong>/api/workitems/search</strong> - Search work items
+            </div>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <strong>/api/workitems/user-story</strong> - Create user story
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Azure DevOps MCP Web Interface - Built with ❤️</p>
+        </div>
+    </div>
+
+    <script>
+        // Check connection status on page load
+        window.addEventListener('load', checkConnection);
+
+        async function checkConnection() {
+            try {
+                const response = await fetch('/api/test-connection');
+                const data = await response.json();
+                
+                const indicator = document.getElementById('statusIndicator');
+                const text = document.getElementById('statusText');
+                const details = document.getElementById('statusDetails');
+                
+                if (data.connected) {
+                    indicator.className = 'status-indicator status-connected';
+                    text.textContent = 'Connected to Azure DevOps';
+                    details.innerHTML = `
+                        <p><strong>Organization:</strong> ${data.organization}</p>
+                        <p><strong>Project:</strong> ${data.project}</p>
+                    `;
+                } else {
+                    indicator.className = 'status-indicator status-disconnected';
+                    text.textContent = 'Failed to connect to Azure DevOps';
+                    details.innerHTML = `<p style="color: #f44336;">Please check your configuration.</p>`;
+                }
+            } catch (error) {
+                const indicator = document.getElementById('statusIndicator');
+                const text = document.getElementById('statusText');
+                const details = document.getElementById('statusDetails');
+                
+                indicator.className = 'status-indicator status-disconnected';
+                text.textContent = 'Connection Error';
+                details.innerHTML = `<p style="color: #f44336;">${error.message}</p>`;
+            }
+        }
+
+        async function getPullRequest() {
+            const repositoryId = document.getElementById('repositoryId').value;
+            const pullRequestId = document.getElementById('pullRequestId').value;
+            const resultDiv = document.getElementById('prResult');
+            
+            if (!repositoryId || !pullRequestId) {
+                showResult('prResult', 'Please enter both Repository ID and Pull Request ID', true);
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/pullrequests/${repositoryId}/${pullRequestId}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('prResult', JSON.stringify(data, null, 2), false);
+                } else {
+                    showResult('prResult', data.error, true);
+                }
+            } catch (error) {
+                showResult('prResult', error.message, true);
+            }
+        }
+
+        async function getPullRequestComments() {
+            const repositoryId = document.getElementById('repositoryId').value;
+            const pullRequestId = document.getElementById('pullRequestId').value;
+            
+            if (!repositoryId || !pullRequestId) {
+                showResult('prResult', 'Please enter both Repository ID and Pull Request ID', true);
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/pullrequests/${repositoryId}/${pullRequestId}/comments`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('prResult', JSON.stringify(data, null, 2), false);
+                } else {
+                    showResult('prResult', data.error, true);
+                }
+            } catch (error) {
+                showResult('prResult', error.message, true);
+            }
+        }
+
+        async function getWorkItem() {
+            const workItemId = document.getElementById('workItemId').value;
+            
+            if (!workItemId) {
+                showResult('workItemResult', 'Please enter a Work Item ID', true);
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/workitems/${workItemId}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('workItemResult', JSON.stringify(data, null, 2), false);
+                } else {
+                    showResult('workItemResult', data.error, true);
+                }
+            } catch (error) {
+                showResult('workItemResult', error.message, true);
+            }
+        }
+
+        async function searchWorkItems() {
+            const query = document.getElementById('searchQuery').value;
+            
+            if (!query) {
+                showResult('workItemResult', 'Please enter a search query', true);
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/workitems/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('workItemResult', JSON.stringify(data, null, 2), false);
+                } else {
+                    showResult('workItemResult', data.error, true);
+                }
+            } catch (error) {
+                showResult('workItemResult', error.message, true);
+            }
+        }
+
+        async function getRepositories() {
+            try {
+                const response = await fetch('/api/repositories');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('repoResult', JSON.stringify(data, null, 2), false);
+                } else {
+                    showResult('repoResult', data.error, true);
+                }
+            } catch (error) {
+                showResult('repoResult', error.message, true);
+            }
+        }
+
+        function showResult(elementId, content, isError) {
+            const resultDiv = document.getElementById(elementId);
+            resultDiv.style.display = 'block';
+            resultDiv.textContent = content;
+            resultDiv.className = `result-area ${isError ? 'error' : 'success'}`;
+        }
+    </script>
+</body>
+</html>

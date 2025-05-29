@@ -1,0 +1,49 @@
+{
+  "name": "azure-devops-mcp-server",
+  "version": "1.0.0",
+  "description": "Azure DevOps MCP Server for Pull Requests, Work Items, and Test Cases management",
+  "main": "src/server.js",
+  "type": "module",
+  "bin": {
+    "azure-devops-mcp": "src/server.js"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "start-web": "node src/web-server.js",
+    "dev": "nodemon src/server.js",
+    "dev-web": "nodemon src/web-server.js",
+    "test": "node tests/integration-test.js",
+    "test-mcp": "echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}' | node src/server.js",
+    "test-connection": "echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"test_connection\",\"arguments\":{}}}' | node src/server.js",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "keywords": [
+    "mcp",
+    "azure-devops",
+    "pull-requests",
+    "work-items",
+    "test-cases",
+    "model-context-protocol"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "azure-devops-node-api": "^12.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "nodemon": "^3.1.3",
+    "prettier": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "mcp": {
+    "server": "src/server.js"
+  }
+}
