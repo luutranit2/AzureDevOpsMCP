@@ -20,7 +20,7 @@ This project is a Node.js application that integrates with Azure DevOps.
 To get started with this project, clone the repository and install the dependencies:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/luutranit2/AzureDevOpsMCP.git
 cd AzureDevOpsMCP
 npm install
 ```

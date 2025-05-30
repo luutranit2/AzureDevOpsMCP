@@ -255,7 +255,7 @@ LOG_LEVEL=info
 
 1. **Clone the repository:**
 ```bash
-git clone <repository-url>
+git clone https://github.com/luutranit2/AzureDevOpsMCP.git
 cd AzureDevOpsMCP
 ```
 
@@ -438,6 +438,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 For issues and questions:
-- Create an issue in the GitHub repository
+- Create an issue in the [GitHub repository](https://github.com/luutranit2/AzureDevOpsMCP/issues)
 - Check the troubleshooting section
 - Review Azure DevOps documentation for API-specific questions
