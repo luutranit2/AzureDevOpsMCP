@@ -26,6 +26,17 @@ const mockFeature = {
     description: 'This is a test feature for linking user stories'
 };
 
+const mockBug = {
+    title: 'Test Bug',
+    description: 'This is a test bug for automated testing',
+    priority: 2,
+    severity: '2 - High',
+    reproSteps: '1. Navigate to login page\n2. Enter invalid credentials\n3. Click submit\n4. Observe error',
+    foundIn: 'v1.0.0',
+    systemInfo: 'Windows 10, Chrome 91, 8GB RAM',
+    tags: 'login, authentication, critical'
+};
+
 /**
  * Test configuration
  */
@@ -389,6 +400,122 @@ async function testDeleteUserStory(workItemManager) {
     }
 }
 
+async function testCreateBug(workItemManager) {
+    const bug = await workItemManager.createBug(
+        mockBug.title,
+        mockBug.description,
+        {
+            priority: mockBug.priority,
+            severity: mockBug.severity,
+            reproSteps: mockBug.reproSteps,
+            foundIn: mockBug.foundIn,
+            systemInfo: mockBug.systemInfo,
+            tags: mockBug.tags
+        }
+    );
+
+    if (!bug.id) {
+        throw new Error('Bug was not created - missing ID');
+    }
+
+    if (bug.title !== mockBug.title) {
+        throw new Error('Bug title does not match');
+    }
+
+    if (bug.workItemType !== 'Bug') {
+        throw new Error('Work item type is not Bug');
+    }
+
+    if (bug.priority !== mockBug.priority) {
+        throw new Error('Bug priority does not match');
+    }
+
+    if (bug.severity !== mockBug.severity) {
+        throw new Error('Bug severity does not match');
+    }
+
+    // Store for other tests
+    testCreateBug.createdBugId = bug.id;
+    return bug;
+}
+
+async function testUpdateBug(workItemManager) {
+    if (!testCreateBug.createdBugId) {
+        throw new Error('No bug ID available from creation test');
+    }
+
+    const updatedBug = await workItemManager.updateBug(testCreateBug.createdBugId, {
+        title: 'Updated Bug Title',
+        severity: '1 - Critical',
+        state: 'Active',
+        reproSteps: 'Updated reproduction steps:\n1. New step 1\n2. New step 2'
+    });
+
+    if (updatedBug.title !== 'Updated Bug Title') {
+        throw new Error('Bug title was not updated');
+    }
+
+    if (updatedBug.severity !== '1 - Critical') {
+        throw new Error('Bug severity was not updated');
+    }
+
+    if (updatedBug.state !== 'Active') {
+        throw new Error('Bug state was not updated');
+    }
+
+    return updatedBug;
+}
+
+async function testCreateBugWithParent(workItemManager) {
+    if (!testCreateUserStory.createdUserStoryId) {
+        throw new Error('No user story ID available from creation test');
+    }
+
+    const parentLinkedBug = await workItemManager.createBug(
+        'Bug linked to user story',
+        'This bug is linked to a parent user story',
+        {
+            parentId: testCreateUserStory.createdUserStoryId,
+            priority: 1,
+            severity: '1 - Critical',
+            reproSteps: 'Steps related to parent user story functionality'
+        }
+    );
+
+    if (!parentLinkedBug.id) {
+        throw new Error('Parent-linked bug was not created - missing ID');
+    }
+
+    if (parentLinkedBug.parentId !== testCreateUserStory.createdUserStoryId) {
+        throw new Error('Bug parent ID does not match user story ID');
+    }
+
+    // Store for cleanup
+    testCreateBugWithParent.createdBugId = parentLinkedBug.id;
+    return parentLinkedBug;
+}
+
+async function testBugErrorHandling(workItemManager) {
+    // Test invalid bug ID update
+    try {
+        await workItemManager.updateBug(999999, { title: 'Should fail' });
+        throw new Error('Expected error for invalid bug ID was not thrown');
+    } catch (error) {
+        if (!error.message.includes('not found') && !error.message.includes('does not exist')) {
+            throw new Error(`Unexpected error message: ${error.message}`);
+        }
+    }
+
+    // Test invalid priority
+    try {
+        await workItemManager.createBug('Test', 'Test description', { priority: 10 });
+        // This should not throw an error but should warn and skip the invalid priority
+        console.log('   ⚠️  Invalid priority was handled gracefully (expected behavior)');
+    } catch (error) {
+        throw new Error(`Unexpected error for invalid priority: ${error.message}`);
+    }
+}
+
 /**
  * Main test execution
  */
@@ -425,6 +552,12 @@ async function runWorkItemManagerTests() {
         await tester.runTest('Link User Story to Feature', () => testLinkUserStoryToFeature(workItemManager));
         await tester.runTest('Search Work Items', () => testSearchWorkItems(workItemManager));
         await tester.runTest('Error Handling', () => testErrorHandling(workItemManager));
+        
+        // Bug tests
+        await tester.runTest('Create Bug', () => testCreateBug(workItemManager));
+        await tester.runTest('Update Bug', () => testUpdateBug(workItemManager));
+        await tester.runTest('Create Bug with Parent', () => testCreateBugWithParent(workItemManager));
+        await tester.runTest('Bug Error Handling', () => testBugErrorHandling(workItemManager));
         
         // Delete test should be last as it removes the created work item
         await tester.runTest('Delete User Story', () => testDeleteUserStory(workItemManager));
