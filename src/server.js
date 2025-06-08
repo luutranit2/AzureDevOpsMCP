@@ -449,6 +449,110 @@ class AzureDevOpsMCPServer {
             },
           },
           {
+            name: 'create_bug',
+            description: 'Create a new bug in Azure DevOps',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                title: {
+                  type: 'string',
+                  description: 'The title of the bug',
+                },
+                description: {
+                  type: 'string',
+                  description: 'The description of the bug',
+                },
+                parentId: {
+                  type: ['number', 'string'],
+                  description: 'The ID of the parent work item (user story, feature, etc.)',
+                },
+                assignedTo: {
+                  type: 'string',
+                  description: 'Email or display name of the person to assign the bug to',
+                },
+                priority: {
+                  type: 'number',
+                  description: 'Priority level (1-4)',
+                },
+                severity: {
+                  type: 'string',
+                  description: 'Severity level (1 - Critical, 2 - High, 3 - Medium, 4 - Low)',
+                },
+                reproSteps: {
+                  type: 'string',
+                  description: 'Steps to reproduce the bug',
+                },
+                foundIn: {
+                  type: 'string',
+                  description: 'Version or build where the bug was found',
+                },
+                systemInfo: {
+                  type: 'string',
+                  description: 'System information where the bug occurred',
+                },
+                tags: {
+                  type: 'string',
+                  description: 'Comma-separated tags',
+                },
+              },
+              required: ['title', 'description'],
+            },
+          },
+          {
+            name: 'update_bug',
+            description: 'Update an existing bug',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                workItemId: {
+                  type: ['number', 'string'],
+                  description: 'The ID of the bug to update',
+                },
+                title: {
+                  type: 'string',
+                  description: 'New title',
+                },
+                description: {
+                  type: 'string',
+                  description: 'New description',
+                },
+                priority: {
+                  type: 'number',
+                  description: 'New priority level (1-4)',
+                },
+                severity: {
+                  type: 'string',
+                  description: 'New severity level (1 - Critical, 2 - High, 3 - Medium, 4 - Low)',
+                },
+                reproSteps: {
+                  type: 'string',
+                  description: 'New reproduction steps',
+                },
+                foundIn: {
+                  type: 'string',
+                  description: 'New version or build where the bug was found',
+                },
+                systemInfo: {
+                  type: 'string',
+                  description: 'New system information',
+                },
+                state: {
+                  type: 'string',
+                  description: 'New state (New, Active, Resolved, Closed, etc.)',
+                },
+                assignedTo: {
+                  type: 'string',
+                  description: 'New assignee email or display name',
+                },
+                tags: {
+                  type: 'string',
+                  description: 'New comma-separated tags',
+                },
+              },
+              required: ['workItemId'],
+            },
+          },
+          {
             name: 'test_connection',
             description: 'Test the connection to Azure DevOps',
             inputSchema: {
@@ -480,6 +584,10 @@ class AzureDevOpsMCPServer {
             return await this.searchWorkItems(args);
           case 'create_task':
             return await this.createTask(args);
+          case 'create_bug':
+            return await this.createBug(args);
+          case 'update_bug':
+            return await this.updateBug(args);
           case 'create_test_case':
             return await this.createTestCase(args);
           case 'update_test_case':
@@ -675,6 +783,93 @@ URL: ${userStory.url}
       ],
     };
   }
+
+  async createBug(args) {
+    const { title, description, parentId, assignedTo, priority, severity, reproSteps, foundIn, systemInfo, tags } = args;
+    
+    const additionalFields = {};
+    if (parentId) {
+      additionalFields.parentId = parentId;
+    }
+    if (assignedTo) {
+      additionalFields.assignedTo = assignedTo;
+    }
+    if (priority) {
+      additionalFields.priority = priority;
+    }
+    if (severity) {
+      additionalFields.severity = severity;
+    }
+    if (reproSteps) {
+      additionalFields.reproSteps = reproSteps;
+    }
+    if (foundIn) {
+      additionalFields.foundIn = foundIn;
+    }
+    if (systemInfo) {
+      additionalFields.systemInfo = systemInfo;
+    }
+    if (tags) {
+      additionalFields.tags = tags;
+    }
+
+    const bug = await this.azureDevOps.createBug(title, description, additionalFields);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Successfully created bug #${bug.id}: "${bug.title}"${parentId ? ` under parent work item #${parentId}` : ''}`,
+        },
+      ],
+    };
+  }
+
+  async updateBug(args) {
+    const { workItemId, title, description, priority, severity, reproSteps, foundIn, systemInfo, state, assignedTo, tags } = args;
+    
+    const updates = {};
+    if (title !== undefined) {
+      updates.title = title;
+    }
+    if (description !== undefined) {
+      updates.description = description;
+    }
+    if (priority !== undefined) {
+      updates.priority = priority;
+    }
+    if (severity !== undefined) {
+      updates.severity = severity;
+    }
+    if (reproSteps !== undefined) {
+      updates.reproSteps = reproSteps;
+    }
+    if (foundIn !== undefined) {
+      updates.foundIn = foundIn;
+    }
+    if (systemInfo !== undefined) {
+      updates.systemInfo = systemInfo;
+    }
+    if (state !== undefined) {
+      updates.state = state;
+    }
+    if (assignedTo !== undefined) {
+      updates.assignedTo = assignedTo;
+    }
+    if (tags !== undefined) {
+      updates.tags = tags;
+    }
+
+    const updatedBug = await this.azureDevOps.updateBug(workItemId, updates);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Successfully updated bug #${updatedBug.id}: "${updatedBug.title}"`,
+        },
+      ],
+    };
+  }
+
   async createTestCase(args) {
     const { title, description, steps = [], priority, automationStatus } = args;
     

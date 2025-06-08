@@ -1808,6 +1808,16 @@ export class AzureDevOpsIntegration {
         return this.workItemManager.createTask(title, description, options);
     }
 
+    async createBug(title, description, additionalFields = {}) {
+        await this.ensureInitialized();
+        return this.workItemManager.createBug(title, description, additionalFields);
+    }
+
+    async updateBug(workItemId, updates) {
+        await this.ensureInitialized();
+        return this.workItemManager.updateBug(workItemId, updates);
+    }
+
     async updateUserStory(workItemId, updates) {
         await this.ensureInitialized();
         return this.workItemManager.updateUserStory(workItemId, updates);
