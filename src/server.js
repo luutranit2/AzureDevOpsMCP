@@ -553,6 +553,20 @@ class AzureDevOpsMCPServer {
             },
           },
           {
+            name: 'get_bug',
+            description: 'Get comprehensive details of a bug including basic info, bug-specific fields, comments, and attachments. Can extract bug ID from Azure DevOps URLs.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                workItemId: {
+                  type: ['number', 'string'],
+                  description: 'The ID of the bug to retrieve (can be a number or Azure DevOps URL)',
+                },
+              },
+              required: ['workItemId'],
+            },
+          },
+          {
             name: 'test_connection',
             description: 'Test the connection to Azure DevOps',
             inputSchema: {
@@ -588,6 +602,8 @@ class AzureDevOpsMCPServer {
             return await this.createBug(args);
           case 'update_bug':
             return await this.updateBug(args);
+          case 'get_bug':
+            return await this.getBug(args);
           case 'create_test_case':
             return await this.createTestCase(args);
           case 'update_test_case':
@@ -865,6 +881,102 @@ URL: ${userStory.url}
         {
           type: 'text',
           text: `Successfully updated bug #${updatedBug.id}: "${updatedBug.title}"`,
+        },
+      ],
+    };
+  }
+
+  async getBug(args) {
+    let { workItemId } = args;
+    
+    // If workItemId looks like a URL, extract the ID from it
+    if (typeof workItemId === 'string' && (workItemId.includes('dev.azure.com') || workItemId.includes('visualstudio.com'))) {
+      const extractedId = this.azureDevOps.WorkItemManager.extractWorkItemIdFromUrl(workItemId);
+      if (extractedId) {
+        workItemId = extractedId;
+        console.log(`Extracted work item ID ${workItemId} from URL`);
+      } else {
+        throw new Error('Could not extract work item ID from the provided URL');
+      }
+    }
+
+    const bugDetails = await this.azureDevOps.getBugDetails(workItemId);
+    
+    // Format the response with comprehensive details
+    let responseText = `## Bug Details: ${bugDetails.basicInfo.title}\n\n`;
+    
+    // Basic Information
+    responseText += `**Basic Information:**\n`;
+    responseText += `- ID: ${bugDetails.basicInfo.id}\n`;
+    responseText += `- State: ${bugDetails.basicInfo.state}\n`;
+    responseText += `- Priority: ${bugDetails.basicInfo.priority || 'Not set'}\n`;
+    responseText += `- Assigned To: ${bugDetails.basicInfo.assignedTo || 'Unassigned'}\n`;
+    responseText += `- Created: ${new Date(bugDetails.basicInfo.createdDate).toLocaleString()}\n`;
+    responseText += `- Last Modified: ${new Date(bugDetails.basicInfo.changedDate).toLocaleString()}\n`;
+    if (bugDetails.basicInfo.tags) {
+      responseText += `- Tags: ${bugDetails.basicInfo.tags}\n`;
+    }
+    responseText += `- URL: ${bugDetails.basicInfo.url}\n\n`;
+    
+    // Bug-Specific Fields
+    responseText += `**Bug-Specific Details:**\n`;
+    responseText += `- Severity: ${bugDetails.bugFields.severity || 'Not set'}\n`;
+    if (bugDetails.bugFields.foundIn) {
+      responseText += `- Found In: ${bugDetails.bugFields.foundIn}\n`;
+    }
+    if (bugDetails.bugFields.systemInfo) {
+      responseText += `- System Info: ${bugDetails.bugFields.systemInfo}\n`;
+    }
+    responseText += '\n';
+    
+    // Description
+    if (bugDetails.basicInfo.description) {
+      responseText += `**Description:**\n${bugDetails.basicInfo.description}\n\n`;
+    }
+    
+    // Reproduction Steps
+    if (bugDetails.bugFields.reproSteps) {
+      responseText += `**Reproduction Steps:**\n${bugDetails.bugFields.reproSteps}\n\n`;
+    }
+    
+    // Comments
+    if (bugDetails.comments.length > 0) {
+      responseText += `**Comments (${bugDetails.comments.length}):**\n`;
+      bugDetails.comments.forEach((comment, index) => {
+        responseText += `${index + 1}. **${comment.createdBy}** (${new Date(comment.createdDate).toLocaleString()}):\n`;
+        responseText += `   ${comment.text}\n\n`;
+      });
+    } else {
+      responseText += `**Comments:** No comments found\n\n`;
+    }
+    
+    // Attachments
+    if (bugDetails.attachments.length > 0) {
+      responseText += `**Attachments (${bugDetails.attachments.length}):**\n`;
+      bugDetails.attachments.forEach((attachment, index) => {
+        responseText += `${index + 1}. ${attachment.name} (${attachment.size} bytes)\n`;
+        responseText += `   Download: ${attachment.url}\n`;
+      });
+      responseText += '\n';
+    } else {
+      responseText += `**Attachments:** No attachments found\n\n`;
+    }
+    
+    // Related Work Items
+    if (bugDetails.relations.length > 0) {
+      responseText += `**Related Work Items (${bugDetails.relations.length}):**\n`;
+      bugDetails.relations.forEach((relation, index) => {
+        responseText += `${index + 1}. ${relation.rel}: ${relation.url}\n`;
+      });
+    } else {
+      responseText += `**Related Work Items:** No relationships found\n`;
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: responseText,
         },
       ],
     };

@@ -1737,7 +1737,8 @@ export class WorkItemManager {
 
             console.log(`✅ Work item retrieved: ${workItem.fields['System.Title']}`);
 
-            return {
+            // Build the base response object
+            const response = {
                 id: workItem.id,
                 title: workItem.fields['System.Title'],
                 description: workItem.fields['System.Description'] || '',
@@ -1759,11 +1760,321 @@ export class WorkItemManager {
                 links: workItem._links || {}
             };
 
+            // Add Bug-specific fields if this is a Bug work item
+            if (workItem.fields['System.WorkItemType'] === 'Bug') {
+                response.severity = workItem.fields['Microsoft.VSTS.Common.Severity'] || null;
+                response.reproSteps = workItem.fields['Microsoft.VSTS.TCM.ReproSteps'] || null;
+                response.foundIn = workItem.fields['Microsoft.VSTS.Common.FoundIn'] || null;
+                response.systemInfo = workItem.fields['Microsoft.VSTS.TCM.SystemInfo'] || null;
+            }
+
+            return response;
+
         } catch (error) {
             console.error('❌ Failed to retrieve work item:', error.message);
             throw this._handleError(error, 'retrieve work item');
         }
-    }    /**
+    }
+
+    /**
+     * Get work item comments
+     * 
+     * @async
+     * @method getWorkItemComments
+     * @description Retrieves all comments for a specific work item from Azure DevOps.
+     * Comments provide historical context and discussions related to the work item.
+     * 
+     * @param {number|string} workItemId - The ID of the work item to get comments for
+     * 
+     * @returns {Promise<Array>} Promise resolving to an array of comment objects, each containing:
+     * @returns {number} returns[].id - Unique identifier of the comment
+     * @returns {string} returns[].text - The comment text content
+     * @returns {string} returns[].createdDate - ISO datetime when the comment was created
+     * @returns {string} returns[].createdBy - Display name of the user who created the comment
+     * @returns {string} returns[].modifiedDate - ISO datetime when the comment was last modified
+     * @returns {string} returns[].modifiedBy - Display name of the user who last modified the comment
+     * 
+     * @throws {Error} When the Work Item Tracking API is not initialized
+     * @throws {Error} When workItemId is invalid
+     * @throws {Error} When the work item does not exist
+     * @throws {Error} When authentication or network errors occur
+     * 
+     * @example
+     * const comments = await manager.getWorkItemComments(123);
+     * console.log(`Found ${comments.length} comments`);
+     * comments.forEach(comment => {
+     *   console.log(`${comment.createdBy}: ${comment.text}`);
+     * });
+     */
+    async getWorkItemComments(workItemId) {
+        if (!this.workItemTrackingApi) {
+            throw new Error('Work Item Tracking API not initialized. Call initialize() first.');
+        }
+
+        if (!workItemId || isNaN(parseInt(workItemId)) || parseInt(workItemId) <= 0) {
+            throw new Error('Valid work item ID is required');
+        }
+
+        workItemId = parseInt(workItemId);
+
+        try {
+            console.log(`💬 Retrieving comments for work item: ${workItemId}`);
+            
+            const comments = await this._retryOperation(async () => {
+                return await this.workItemTrackingApi.getComments(
+                    this.project,
+                    workItemId
+                );
+            });
+
+            if (!comments || !comments.comments) {
+                console.log(`No comments found for work item ${workItemId}`);
+                return [];
+            }
+
+            console.log(`✅ Retrieved ${comments.comments.length} comments for work item ${workItemId}`);
+
+            return comments.comments.map(comment => ({
+                id: comment.id,
+                text: comment.text,
+                createdDate: comment.createdDate,
+                createdBy: comment.createdBy?.displayName || 'Unknown',
+                modifiedDate: comment.modifiedDate,
+                modifiedBy: comment.modifiedBy?.displayName || 'Unknown'
+            }));
+
+        } catch (error) {
+            console.error(`❌ Failed to retrieve comments for work item ${workItemId}:`, error.message);
+            throw this._handleError(error, 'retrieve work item comments');
+        }
+    }
+
+    /**
+     * Get work item attachments
+     * 
+     * @async
+     * @method getWorkItemAttachments
+     * @description Retrieves all attachments for a specific work item from Azure DevOps.
+     * Attachments include files, images, and documents related to the work item.
+     * 
+     * @param {number|string} workItemId - The ID of the work item to get attachments for
+     * 
+     * @returns {Promise<Array>} Promise resolving to an array of attachment objects, each containing:
+     * @returns {string} returns[].id - Unique identifier of the attachment
+     * @returns {string} returns[].name - Original filename of the attachment
+     * @returns {string} returns[].url - Download URL for the attachment
+     * @returns {number} returns[].size - Size of the attachment in bytes
+     * @returns {string} returns[].createdDate - ISO datetime when the attachment was uploaded
+     * @returns {string} returns[].createdBy - Display name of the user who uploaded the attachment
+     * 
+     * @throws {Error} When the Work Item Tracking API is not initialized
+     * @throws {Error} When workItemId is invalid
+     * @throws {Error} When the work item does not exist
+     * @throws {Error} When authentication or network errors occur
+     * 
+     * @example
+     * const attachments = await manager.getWorkItemAttachments(123);
+     * console.log(`Found ${attachments.length} attachments`);
+     * attachments.forEach(attachment => {
+     *   console.log(`${attachment.name} (${attachment.size} bytes)`);
+     * });
+     */
+    async getWorkItemAttachments(workItemId) {
+        if (!this.workItemTrackingApi) {
+            throw new Error('Work Item Tracking API not initialized. Call initialize() first.');
+        }
+
+        if (!workItemId || isNaN(parseInt(workItemId)) || parseInt(workItemId) <= 0) {
+            throw new Error('Valid work item ID is required');
+        }
+
+        workItemId = parseInt(workItemId);
+
+        try {
+            console.log(`📎 Retrieving attachments for work item: ${workItemId}`);
+            
+            // Get the work item with relations to find attachments
+            const workItem = await this._retryOperation(async () => {
+                return await this.workItemTrackingApi.getWorkItem(
+                    workItemId,
+                    null, // fields
+                    null, // asOf
+                    'relations' // expand relations to get attachments
+                );
+            });
+
+            if (!workItem || !workItem.relations) {
+                console.log(`No attachments found for work item ${workItemId}`);
+                return [];
+            }
+
+            // Filter for attachment relations
+            const attachmentRelations = workItem.relations.filter(relation => 
+                relation.rel === 'AttachedFile'
+            );
+
+            if (attachmentRelations.length === 0) {
+                console.log(`No attachments found for work item ${workItemId}`);
+                return [];
+            }
+
+            console.log(`✅ Found ${attachmentRelations.length} attachments for work item ${workItemId}`);
+
+            return attachmentRelations.map(relation => ({
+                id: relation.url.split('/').pop(), // Extract attachment ID from URL
+                name: relation.attributes?.name || 'Unknown',
+                url: relation.url,
+                size: relation.attributes?.resourceSize || 0,
+                createdDate: relation.attributes?.resourceCreatedDate || null,
+                createdBy: relation.attributes?.authorizedDate || 'Unknown'
+            }));
+
+        } catch (error) {
+            console.error(`❌ Failed to retrieve attachments for work item ${workItemId}:`, error.message);
+            throw this._handleError(error, 'retrieve work item attachments');
+        }
+    }
+
+    /**
+     * Get comprehensive bug details
+     * 
+     * @async
+     * @method getBugDetails
+     * @description Retrieves comprehensive details for a Bug work item including basic fields,
+     * Bug-specific fields, comments, attachments, and relationships. This provides a complete
+     * view of the bug for analysis and reporting purposes.
+     * 
+     * @param {number|string} workItemId - The ID of the bug work item to analyze
+     * 
+     * @returns {Promise<Object>} Promise resolving to comprehensive bug details object containing:
+     * @returns {Object} returns.basicInfo - Basic work item information (id, title, description, etc.)
+     * @returns {Object} returns.bugFields - Bug-specific fields (severity, reproSteps, foundIn, systemInfo)
+     * @returns {Array} returns.comments - All comments associated with the bug
+     * @returns {Array} returns.attachments - All attachments associated with the bug
+     * @returns {Array} returns.relations - All work item relationships
+     * 
+     * @throws {Error} When the work item is not a Bug type
+     * @throws {Error} When the Work Item Tracking API is not initialized
+     * @throws {Error} When workItemId is invalid
+     * @throws {Error} When the work item does not exist
+     * @throws {Error} When authentication or network errors occur
+     * 
+     * @example
+     * const bugDetails = await manager.getBugDetails(123);
+     * console.log(`Bug: ${bugDetails.basicInfo.title}`);
+     * console.log(`Severity: ${bugDetails.bugFields.severity}`);
+     * console.log(`Comments: ${bugDetails.comments.length}`);
+     * console.log(`Attachments: ${bugDetails.attachments.length}`);
+     */
+    async getBugDetails(workItemId) {
+        console.log(`🔍 Getting comprehensive details for bug: ${workItemId}`);
+
+        // First get the basic work item details
+        const workItem = await this.getWorkItem(workItemId);
+        
+        // Verify this is a Bug work item
+        if (workItem.workItemType !== 'Bug') {
+            throw new Error(`Work item ${workItemId} is not a Bug (type: ${workItem.workItemType})`);
+        }
+
+        // Get comments and attachments in parallel for efficiency
+        const [comments, attachments] = await Promise.all([
+            this.getWorkItemComments(workItemId).catch(error => {
+                console.warn(`⚠️ Failed to get comments: ${error.message}`);
+                return [];
+            }),
+            this.getWorkItemAttachments(workItemId).catch(error => {
+                console.warn(`⚠️ Failed to get attachments: ${error.message}`);
+                return [];
+            })
+        ]);
+
+        const result = {
+            basicInfo: {
+                id: workItem.id,
+                title: workItem.title,
+                description: workItem.description,
+                state: workItem.state,
+                workItemType: workItem.workItemType,
+                assignedTo: workItem.assignedTo,
+                priority: workItem.priority,
+                iterationPath: workItem.iterationPath,
+                areaPath: workItem.areaPath,
+                tags: workItem.tags,
+                url: workItem.url,
+                createdDate: workItem.createdDate,
+                changedDate: workItem.changedDate,
+                createdBy: workItem.createdBy,
+                changedBy: workItem.changedBy
+            },
+            bugFields: {
+                severity: workItem.severity,
+                reproSteps: workItem.reproSteps,
+                foundIn: workItem.foundIn,
+                systemInfo: workItem.systemInfo
+            },
+            comments: comments,
+            attachments: attachments,
+            relations: workItem.relations || []
+        };
+
+        console.log(`✅ Retrieved comprehensive bug details: ${result.comments.length} comments, ${result.attachments.length} attachments`);
+        return result;
+    }
+
+    /**
+     * Extract work item ID from Azure DevOps URL
+     * 
+     * @static
+     * @method extractWorkItemIdFromUrl
+     * @description Parses an Azure DevOps work item URL to extract the work item ID.
+     * Supports various Azure DevOps URL formats including legacy and modern formats.
+     * 
+     * @param {string} url - The Azure DevOps work item URL
+     * 
+     * @returns {number|null} The extracted work item ID, or null if not found
+     * 
+     * @example
+     * const id = WorkItemManager.extractWorkItemIdFromUrl('https://dev.azure.com/org/project/_workitems/edit/123');
+     * console.log(id); // 123
+     * 
+     * @example
+     * const id = WorkItemManager.extractWorkItemIdFromUrl('https://org.visualstudio.com/project/_workitems?id=456');
+     * console.log(id); // 456
+     */
+    static extractWorkItemIdFromUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return null;
+        }
+
+        // Common Azure DevOps URL patterns for work items
+        const patterns = [
+            // Modern format: https://dev.azure.com/{organization}/{project}/_workitems/edit/{id}
+            /\/_workitems\/edit\/(\d+)/i,
+            // Legacy format: https://{organization}.visualstudio.com/{project}/_workitems?id={id}
+            /[?&]id=(\d+)/i,
+            // Direct ID in URL: https://dev.azure.com/{organization}/{project}/_workitems/{id}
+            /\/_workitems\/(\d+)(?:\?|$)/i,
+            // Bug-specific URLs: https://dev.azure.com/{organization}/{project}/_workitems/edit/{id}/Bug
+            /\/_workitems\/edit\/(\d+)\/bug/i,
+            // Alternative formats
+            /workitems[\/=](\d+)/i
+        ];
+
+        for (const pattern of patterns) {
+            const match = url.match(pattern);
+            if (match && match[1]) {
+                const id = parseInt(match[1]);
+                if (id > 0) {
+                    return id;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Search for work items using Work Item Query Language (WIQL)
      * 
      * @async

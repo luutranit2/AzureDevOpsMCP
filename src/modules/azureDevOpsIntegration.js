@@ -1818,6 +1818,11 @@ export class AzureDevOpsIntegration {
         return this.workItemManager.updateBug(workItemId, updates);
     }
 
+    async getBugDetails(workItemId) {
+        await this.ensureInitialized();
+        return this.workItemManager.getBugDetails(workItemId);
+    }
+
     async updateUserStory(workItemId, updates) {
         await this.ensureInitialized();
         return this.workItemManager.updateUserStory(workItemId, updates);
@@ -2243,5 +2248,9 @@ export class AzureDevOpsIntegration {
     async getTestCasesForUserStory(userStoryId) {
         await this.ensureInitialized();
         return this.testCaseManager.getTestCasesForUserStory(userStoryId);
+    }
+
+    get WorkItemManager() {
+        return WorkItemManager;
     }
 }
