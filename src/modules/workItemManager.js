@@ -577,7 +577,285 @@ export class WorkItemManager {
             console.error('❌ Failed to create task:', error.message);
             throw this._handleError(error, 'create task');
         }
-    }    /**
+    }
+
+    /**
+     * Create a new bug work item in Azure DevOps
+     * 
+     * @async
+     * @method createBug
+     * @description Creates a new bug work item with the specified title, description, and optional additional fields.
+     * Bugs are used to track defects, issues, and problems found in the software. The method validates
+     * all inputs, constructs the appropriate JSON patch document for Azure DevOps API, handles the creation process
+     * with retry logic, and supports bug-specific fields like severity, reproduction steps, and system information.
+     * 
+     * @param {string} title - The title of the bug (required, non-empty string)
+     * @param {string} description - The detailed description of the bug (required, non-empty string)
+     * @param {Object} [additionalFields={}] - Optional additional fields to set on the bug
+     * @param {string} [additionalFields.assignedTo] - Email address or display name of the assigned user
+     * @param {string} [additionalFields.iterationPath] - Iteration path for sprint/iteration assignment
+     * @param {string} [additionalFields.areaPath] - Area path for team/component organization
+     * @param {number} [additionalFields.priority] - Priority level (1-4, where 1 is highest priority)
+     * @param {string} [additionalFields.severity] - Severity level ('1 - Critical', '2 - High', '3 - Medium', '4 - Low')
+     * @param {string} [additionalFields.reproSteps] - Steps to reproduce the bug
+     * @param {string} [additionalFields.foundIn] - Version or build where the bug was found
+     * @param {string} [additionalFields.systemInfo] - System information where the bug occurred
+     * @param {number} [additionalFields.parentId] - Parent work item ID (typically a user story or feature) to link this bug to
+     * @param {string} [additionalFields.tags] - Comma-separated tags for categorization
+     * 
+     * @returns {Promise<Object>} Promise resolving to the created bug object containing:
+     * @returns {number} returns.id - Unique identifier of the created work item
+     * @returns {string} returns.title - Title of the work item
+     * @returns {string} returns.description - Description of the work item
+     * @returns {string} returns.state - Current state (e.g., 'New', 'Active', 'Resolved', 'Closed')
+     * @returns {string} returns.workItemType - Type of work item ('Bug')
+     * @returns {string|null} returns.assignedTo - Display name of assigned user or null
+     * @returns {number|null} returns.priority - Priority level or null
+     * @returns {string|null} returns.severity - Severity level or null
+     * @returns {string|null} returns.reproSteps - Reproduction steps or null
+     * @returns {string|null} returns.foundIn - Found in version or null
+     * @returns {string|null} returns.systemInfo - System information or null
+     * @returns {string|null} returns.iterationPath - Iteration path or null
+     * @returns {string|null} returns.areaPath - Area path or null
+     * @returns {string} returns.url - URL to view the work item in Azure DevOps
+     * @returns {string} returns.createdDate - ISO datetime when the work item was created
+     * @returns {string} returns.changedDate - ISO datetime when the work item was last modified
+     * @returns {number|null} returns.parentId - Parent work item ID if linked, or null
+     * 
+     * @throws {Error} When the Work Item Tracking API is not initialized (call initialize() first)
+     * @throws {Error} When title parameter is missing, null, or not a string
+     * @throws {Error} When description parameter is missing, null, or not a string
+     * @throws {Error} When priority is provided but not a number between 1-4
+     * @throws {Error} When parentId is provided but the linking fails (parent may not exist)
+     * @throws {Error} When authentication fails (401) - check PAT token
+     * @throws {Error} When access is denied (403) - check permissions
+     * @throws {Error} When project/resource not found (404)
+     * @throws {Error} When request parameters are invalid (400)
+     * @throws {Error} When network or server errors occur (500, 502, 503, 504)
+     * 
+     * @example
+     * // Basic bug creation
+     * const bug = await manager.createBug(
+     *   'Login page crashes on invalid input',
+     *   'The login page throws an unhandled exception when user enters invalid credentials'
+     * );
+     * console.log(`Created bug with ID: ${bug.id}`);
+     * 
+     * @example
+     * // Bug with full details
+     * const bug = await manager.createBug(
+     *   'Performance issue in search functionality',
+     *   'Search takes more than 10 seconds to return results for large datasets',
+     *   {
+     *     assignedTo: 'developer@company.com',
+     *     priority: 2,
+     *     severity: '2 - High',
+     *     reproSteps: '1. Navigate to search page\n2. Enter query with 1000+ results\n3. Click search\n4. Wait for results',
+     *     foundIn: 'v1.2.3',
+     *     systemInfo: 'Windows 10, Chrome 90, 8GB RAM',
+     *     iterationPath: 'MyProject\\Sprint 1',
+     *     areaPath: 'MyProject\\Frontend\\Search',
+     *     tags: 'performance, search, critical'
+     *   }
+     * );
+     * 
+     * @example
+     * // Bug linked to parent user story
+     * const parentStoryId = 123;
+     * const bug = await manager.createBug(
+     *   'User authentication fails with special characters',
+     *   'Login fails when password contains special characters like @#$%',
+     *   {
+     *     parentId: parentStoryId,
+     *     assignedTo: 'qa@company.com',
+     *     priority: 1,
+     *     severity: '1 - Critical',
+     *     reproSteps: '1. Enter username\n2. Enter password with special chars\n3. Click login\n4. Error occurs',
+     *     tags: 'authentication, security, blocker'
+     *   }
+     * );
+     * console.log(`Bug ${bug.id} linked to story ${parentStoryId}`);
+     * 
+     * @example
+     * // With error handling
+     * try {
+     *   const bug = await manager.createBug(title, description, fields);
+     *   console.log('Bug created successfully:', bug.title);
+     * } catch (error) {
+     *   if (error.message.includes('failed to link to parent')) {
+     *     console.warn('Bug created but parent linking failed');
+     *   } else {
+     *     console.error('Failed to create bug:', error.message);
+     *   }
+     * }
+     * 
+     * @since 1.0.0
+     * @see {@link https://docs.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/create} Azure DevOps Create Work Item API
+     * @see {@link https://docs.microsoft.com/en-us/azure/devops/boards/work-items/about-work-items} About Work Items in Azure DevOps
+     * @see {@link WorkItemManager#linkWorkItems} For manual work item linking
+     */
+    async createBug(title, description, additionalFields = {}) {
+        if (!this.workItemTrackingApi) {
+            throw new Error('Work Item Tracking API not initialized. Call initialize() first.');
+        }
+
+        if (!title || typeof title !== 'string') {
+            throw new Error('Title is required and must be a string');
+        }
+
+        if (!description || typeof description !== 'string') {
+            throw new Error('Description is required and must be a string');
+        }
+
+        try {
+            console.log(`📝 Creating bug: ${title}`);
+
+            // Build the JSON patch document
+            const patchDocument = [
+                {
+                    op: 'add',
+                    path: '/fields/System.Title',
+                    value: title
+                },
+                {
+                    op: 'add',
+                    path: '/fields/System.Description',
+                    value: description
+                },
+                {
+                    op: 'add',
+                    path: '/fields/System.WorkItemType',
+                    value: 'Bug'
+                }
+            ];
+
+            // Add optional fields
+            if (additionalFields.assignedTo) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/System.AssignedTo',
+                    value: additionalFields.assignedTo
+                });
+            }
+
+            if (additionalFields.iterationPath) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/System.IterationPath',
+                    value: additionalFields.iterationPath
+                });
+            }
+
+            if (additionalFields.areaPath) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/System.AreaPath',
+                    value: additionalFields.areaPath
+                });
+            }
+
+            if (additionalFields.priority) {
+                const priority = parseInt(additionalFields.priority);
+                if (priority >= 1 && priority <= 4) {
+                    patchDocument.push({
+                        op: 'add',
+                        path: '/fields/Microsoft.VSTS.Common.Priority',
+                        value: priority
+                    });
+                }
+            }
+
+            if (additionalFields.severity) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/Microsoft.VSTS.Common.Severity',
+                    value: additionalFields.severity
+                });
+            }
+
+            if (additionalFields.reproSteps) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/Microsoft.VSTS.TCM.ReproSteps',
+                    value: additionalFields.reproSteps
+                });
+            }
+
+            if (additionalFields.foundIn) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/Microsoft.VSTS.Common.FoundIn',
+                    value: additionalFields.foundIn
+                });
+            }
+
+            if (additionalFields.systemInfo) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/Microsoft.VSTS.TCM.SystemInfo',
+                    value: additionalFields.systemInfo
+                });
+            }
+
+            if (additionalFields.tags) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/System.Tags',
+                    value: additionalFields.tags
+                });
+            }
+
+            const workItem = await this._retryOperation(async () => {
+                return await this.workItemTrackingApi.createWorkItem(
+                    [], // customHeaders
+                    patchDocument,
+                    this.project,
+                    'Bug',
+                    false, // validateOnly
+                    true   // bypassRuleValidation
+                );
+            });
+
+            console.log(`✅ Bug created successfully with ID: ${workItem.id}`);
+
+            // If parentId is provided, create the parent-child relationship
+            if (additionalFields.parentId) {
+                try {
+                    await this.linkWorkItems(workItem.id, additionalFields.parentId, 'Child');
+                    console.log(`✅ Bug ${workItem.id} linked to parent ${additionalFields.parentId}`);
+                } catch (linkError) {
+                    console.warn(`⚠️ Bug created but failed to link to parent: ${linkError.message}`);
+                }
+            }
+
+            return {
+                id: workItem.id,
+                title: workItem.fields['System.Title'],
+                description: workItem.fields['System.Description'],
+                state: workItem.fields['System.State'],
+                workItemType: workItem.fields['System.WorkItemType'],
+                assignedTo: workItem.fields['System.AssignedTo']?.displayName || null,
+                priority: workItem.fields['Microsoft.VSTS.Common.Priority'] || null,
+                severity: workItem.fields['Microsoft.VSTS.Common.Severity'] || null,
+                reproSteps: workItem.fields['Microsoft.VSTS.TCM.ReproSteps'] || null,
+                foundIn: workItem.fields['Microsoft.VSTS.Common.FoundIn'] || null,
+                systemInfo: workItem.fields['Microsoft.VSTS.TCM.SystemInfo'] || null,
+                iterationPath: workItem.fields['System.IterationPath'] || null,
+                areaPath: workItem.fields['System.AreaPath'] || null,
+                tags: workItem.fields['System.Tags'] || null,
+                url: workItem.url,
+                createdDate: workItem.fields['System.CreatedDate'],
+                changedDate: workItem.fields['System.ChangedDate'],
+                parentId: additionalFields.parentId || null
+            };
+
+        } catch (error) {
+            console.error('❌ Failed to create bug:', error.message);
+            throw this._handleError(error, 'create bug');
+        }
+    }
+
+    /**
      * Update an existing user story work item in Azure DevOps
      * 
      * @async
@@ -777,7 +1055,220 @@ export class WorkItemManager {
             console.error('❌ Failed to update user story:', error.message);
             throw this._handleError(error, 'update user story');
         }
-    }    /**
+    }
+
+    /**
+     * Update an existing bug work item in Azure DevOps
+     * 
+     * @async
+     * @method updateBug
+     * @description Updates an existing bug work item with the specified field changes. The method validates
+     * the work item ID, constructs a JSON patch document with only the fields that need to be updated, and applies
+     * the changes through the Azure DevOps API with retry logic. Only provided fields will be updated; other fields
+     * remain unchanged. The method includes validation for specific field types like priority and severity.
+     * 
+     * @param {number|string} workItemId - The ID of the work item to update (will be converted to number)
+     * @param {Object} updates - Object containing the fields to update with their new values
+     * @param {string} [updates.title] - New title for the bug
+     * @param {string} [updates.description] - New description for the bug
+     * @param {number} [updates.priority] - New priority level (1-4, where 1 is highest priority)
+     * @param {string} [updates.severity] - New severity level ('1 - Critical', '2 - High', '3 - Medium', '4 - Low')
+     * @param {string} [updates.reproSteps] - New reproduction steps
+     * @param {string} [updates.foundIn] - New version or build where the bug was found
+     * @param {string} [updates.systemInfo] - New system information
+     * @param {string} [updates.assignedTo] - Email address or display name of the assigned user
+     * @param {string} [updates.iterationPath] - New iteration path for sprint/iteration assignment
+     * @param {string} [updates.areaPath] - New area path for team/component organization
+     * @param {string} [updates.state] - New state (e.g., 'New', 'Active', 'Resolved', 'Closed')
+     * @param {string} [updates.tags] - New comma-separated tags for categorization
+     * 
+     * @returns {Promise<Object>} Promise resolving to the updated bug object containing:
+     * @returns {number} returns.id - Unique identifier of the work item
+     * @returns {string} returns.title - Updated title of the work item
+     * @returns {string} returns.description - Updated description of the work item
+     * @returns {string} returns.state - Current state after update
+     * @returns {string} returns.workItemType - Type of work item ('Bug')
+     * @returns {string|null} returns.assignedTo - Display name of assigned user or null
+     * @returns {number|null} returns.priority - Priority level or null
+     * @returns {string|null} returns.severity - Severity level or null
+     * @returns {string|null} returns.reproSteps - Reproduction steps or null
+     * @returns {string|null} returns.foundIn - Found in version or null
+     * @returns {string|null} returns.systemInfo - System information or null
+     * @returns {string|null} returns.iterationPath - Iteration path or null
+     * @returns {string|null} returns.areaPath - Area path or null
+     * @returns {string} returns.url - URL to view the work item in Azure DevOps
+     * @returns {string} returns.createdDate - ISO datetime when the work item was originally created
+     * @returns {string} returns.changedDate - ISO datetime when the work item was last modified (after this update)
+     * 
+     * @throws {Error} When the Work Item Tracking API is not initialized (call initialize() first)
+     * @throws {Error} When workItemId is missing, null, not a number, or less than or equal to 0
+     * @throws {Error} When updates parameter is missing, null, or not an object
+     * @throws {Error} When no valid fields are provided for update (all fields filtered out)
+     * @throws {Error} When priority is provided but not a number between 1-4
+     * @throws {Error} When the work item does not exist (404)
+     * @throws {Error} When authentication fails (401) - check PAT token
+     * @throws {Error} When access is denied (403) - check permissions to modify work items
+     * @throws {Error} When request parameters are invalid (400)
+     * @throws {Error} When network or server errors occur (500, 502, 503, 504)
+     * 
+     * @example
+     * // Update bug title and description
+     * const updatedBug = await manager.updateBug(123, {
+     *   title: 'Critical login issue with special characters',
+     *   description: 'Updated analysis shows this affects all special character passwords'
+     * });
+     * console.log(`Updated bug: ${updatedBug.title}`);
+     * 
+     * @example
+     * // Update priority and severity
+     * const updatedBug = await manager.updateBug(123, {
+     *   priority: 1,
+     *   severity: '1 - Critical',
+     *   state: 'Active'
+     * });
+     * 
+     * @example
+     * // Update assignment and add reproduction steps
+     * const updatedBug = await manager.updateBug('456', {
+     *   assignedTo: 'newdeveloper@company.com',
+     *   reproSteps: 'Updated steps:\n1. Login with password containing @\n2. Verify error occurs\n3. Check logs',
+     *   foundIn: 'v1.2.4',
+     *   systemInfo: 'Windows 11, Chrome 96'
+     * });
+     * 
+     * @example
+     * // Update with comprehensive metadata
+     * const comprehensiveUpdate = {
+     *   title: 'Performance degradation in search with large datasets',
+     *   description: 'Search performance drops significantly with datasets over 10,000 records',
+     *   severity: '2 - High',
+     *   priority: 2,
+     *   reproSteps: 'Updated reproduction steps with performance metrics',
+     *   foundIn: 'v2.1.0',
+     *   systemInfo: 'Ubuntu 20.04, 16GB RAM, MySQL 8.0',
+     *   iterationPath: 'MyProject\\Sprint 2',
+     *   areaPath: 'MyProject\\Backend\\Search',
+     *   tags: 'performance, search, database, urgent'
+     * };
+     * 
+     * const result = await manager.updateBug(101, comprehensiveUpdate);
+     * 
+     * @example
+     * // Error handling for invalid updates
+     * try {
+     *   await manager.updateBug(999, { priority: 'invalid' });
+     * } catch (error) {
+     *   console.error('Update failed:', error.message);
+     *   // Handle validation or API errors
+     * }
+     * 
+     * @since 1.0.0
+     * @see {@link https://docs.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/update} Update Work Item API Reference
+     */
+    async updateBug(workItemId, updates) {
+        if (!this.workItemTrackingApi) {
+            throw new Error('Work Item Tracking API not initialized. Call initialize() first.');
+        }
+
+        if (!workItemId || isNaN(parseInt(workItemId)) || parseInt(workItemId) <= 0) {
+            throw new Error('Valid work item ID is required');
+        }
+
+        if (!updates || typeof updates !== 'object') {
+            throw new Error('Updates object is required');
+        }
+
+        try {
+            console.log(`📝 Updating bug: ${workItemId}`);
+
+            // Build the JSON patch document
+            const patchDocument = [];
+
+            // Define field mappings for bug work items
+            const fieldMapping = {
+                title: '/fields/System.Title',
+                description: '/fields/System.Description',
+                assignedTo: '/fields/System.AssignedTo',
+                iterationPath: '/fields/System.IterationPath',
+                areaPath: '/fields/System.AreaPath',
+                state: '/fields/System.State',
+                reproSteps: '/fields/Microsoft.VSTS.TCM.ReproSteps',
+                foundIn: '/fields/Microsoft.VSTS.Common.FoundIn',
+                systemInfo: '/fields/Microsoft.VSTS.TCM.SystemInfo',
+                severity: '/fields/Microsoft.VSTS.Common.Severity',
+                tags: '/fields/System.Tags'
+            };
+
+            for (const [key, value] of Object.entries(updates)) {
+                if (fieldMapping[key] && value !== undefined && value !== null) {
+                    let processedValue = value;
+                    
+                    // Process specific field types
+                    if (key === 'priority') {
+                        processedValue = parseInt(value);
+                        if (processedValue < 1 || processedValue > 4) {
+                            console.warn(`Invalid priority value: ${value}. Must be between 1-4.`);
+                            continue;
+                        }
+                        patchDocument.push({
+                            op: 'add',
+                            path: '/fields/Microsoft.VSTS.Common.Priority',
+                            value: processedValue
+                        });
+                    } else {
+                        patchDocument.push({
+                            op: 'add',
+                            path: fieldMapping[key],
+                            value: processedValue
+                        });
+                    }
+                }
+            }
+
+            if (patchDocument.length === 0) {
+                throw new Error('No valid fields provided for update');
+            }
+
+            const workItem = await this._retryOperation(async () => {
+                return await this.workItemTrackingApi.updateWorkItem(
+                    [], // customHeaders
+                    patchDocument,
+                    parseInt(workItemId),
+                    this.project,
+                    false, // validateOnly
+                    true   // bypassRuleValidation
+                );
+            });
+
+            console.log(`✅ Bug updated successfully: ${workItem.id}`);
+
+            return {
+                id: workItem.id,
+                title: workItem.fields['System.Title'],
+                description: workItem.fields['System.Description'],
+                state: workItem.fields['System.State'],
+                workItemType: workItem.fields['System.WorkItemType'],
+                assignedTo: workItem.fields['System.AssignedTo']?.displayName || null,
+                priority: workItem.fields['Microsoft.VSTS.Common.Priority'] || null,
+                severity: workItem.fields['Microsoft.VSTS.Common.Severity'] || null,
+                reproSteps: workItem.fields['Microsoft.VSTS.TCM.ReproSteps'] || null,
+                foundIn: workItem.fields['Microsoft.VSTS.Common.FoundIn'] || null,
+                systemInfo: workItem.fields['Microsoft.VSTS.TCM.SystemInfo'] || null,
+                iterationPath: workItem.fields['System.IterationPath'] || null,
+                areaPath: workItem.fields['System.AreaPath'] || null,
+                tags: workItem.fields['System.Tags'] || null,
+                url: workItem.url,
+                createdDate: workItem.fields['System.CreatedDate'],
+                changedDate: workItem.fields['System.ChangedDate']
+            };
+
+        } catch (error) {
+            console.error('❌ Failed to update bug:', error.message);
+            throw this._handleError(error, 'update bug');
+        }
+    }
+
+    /**
      * Delete a user story work item from Azure DevOps
      * 
      * @async
@@ -1246,7 +1737,8 @@ export class WorkItemManager {
 
             console.log(`✅ Work item retrieved: ${workItem.fields['System.Title']}`);
 
-            return {
+            // Build the base response object
+            const response = {
                 id: workItem.id,
                 title: workItem.fields['System.Title'],
                 description: workItem.fields['System.Description'] || '',
@@ -1268,11 +1760,321 @@ export class WorkItemManager {
                 links: workItem._links || {}
             };
 
+            // Add Bug-specific fields if this is a Bug work item
+            if (workItem.fields['System.WorkItemType'] === 'Bug') {
+                response.severity = workItem.fields['Microsoft.VSTS.Common.Severity'] || null;
+                response.reproSteps = workItem.fields['Microsoft.VSTS.TCM.ReproSteps'] || null;
+                response.foundIn = workItem.fields['Microsoft.VSTS.Common.FoundIn'] || null;
+                response.systemInfo = workItem.fields['Microsoft.VSTS.TCM.SystemInfo'] || null;
+            }
+
+            return response;
+
         } catch (error) {
             console.error('❌ Failed to retrieve work item:', error.message);
             throw this._handleError(error, 'retrieve work item');
         }
-    }    /**
+    }
+
+    /**
+     * Get work item comments
+     * 
+     * @async
+     * @method getWorkItemComments
+     * @description Retrieves all comments for a specific work item from Azure DevOps.
+     * Comments provide historical context and discussions related to the work item.
+     * 
+     * @param {number|string} workItemId - The ID of the work item to get comments for
+     * 
+     * @returns {Promise<Array>} Promise resolving to an array of comment objects, each containing:
+     * @returns {number} returns[].id - Unique identifier of the comment
+     * @returns {string} returns[].text - The comment text content
+     * @returns {string} returns[].createdDate - ISO datetime when the comment was created
+     * @returns {string} returns[].createdBy - Display name of the user who created the comment
+     * @returns {string} returns[].modifiedDate - ISO datetime when the comment was last modified
+     * @returns {string} returns[].modifiedBy - Display name of the user who last modified the comment
+     * 
+     * @throws {Error} When the Work Item Tracking API is not initialized
+     * @throws {Error} When workItemId is invalid
+     * @throws {Error} When the work item does not exist
+     * @throws {Error} When authentication or network errors occur
+     * 
+     * @example
+     * const comments = await manager.getWorkItemComments(123);
+     * console.log(`Found ${comments.length} comments`);
+     * comments.forEach(comment => {
+     *   console.log(`${comment.createdBy}: ${comment.text}`);
+     * });
+     */
+    async getWorkItemComments(workItemId) {
+        if (!this.workItemTrackingApi) {
+            throw new Error('Work Item Tracking API not initialized. Call initialize() first.');
+        }
+
+        if (!workItemId || isNaN(parseInt(workItemId)) || parseInt(workItemId) <= 0) {
+            throw new Error('Valid work item ID is required');
+        }
+
+        workItemId = parseInt(workItemId);
+
+        try {
+            console.log(`💬 Retrieving comments for work item: ${workItemId}`);
+            
+            const comments = await this._retryOperation(async () => {
+                return await this.workItemTrackingApi.getComments(
+                    this.project,
+                    workItemId
+                );
+            });
+
+            if (!comments || !comments.comments) {
+                console.log(`No comments found for work item ${workItemId}`);
+                return [];
+            }
+
+            console.log(`✅ Retrieved ${comments.comments.length} comments for work item ${workItemId}`);
+
+            return comments.comments.map(comment => ({
+                id: comment.id,
+                text: comment.text,
+                createdDate: comment.createdDate,
+                createdBy: comment.createdBy?.displayName || 'Unknown',
+                modifiedDate: comment.modifiedDate,
+                modifiedBy: comment.modifiedBy?.displayName || 'Unknown'
+            }));
+
+        } catch (error) {
+            console.error(`❌ Failed to retrieve comments for work item ${workItemId}:`, error.message);
+            throw this._handleError(error, 'retrieve work item comments');
+        }
+    }
+
+    /**
+     * Get work item attachments
+     * 
+     * @async
+     * @method getWorkItemAttachments
+     * @description Retrieves all attachments for a specific work item from Azure DevOps.
+     * Attachments include files, images, and documents related to the work item.
+     * 
+     * @param {number|string} workItemId - The ID of the work item to get attachments for
+     * 
+     * @returns {Promise<Array>} Promise resolving to an array of attachment objects, each containing:
+     * @returns {string} returns[].id - Unique identifier of the attachment
+     * @returns {string} returns[].name - Original filename of the attachment
+     * @returns {string} returns[].url - Download URL for the attachment
+     * @returns {number} returns[].size - Size of the attachment in bytes
+     * @returns {string} returns[].createdDate - ISO datetime when the attachment was uploaded
+     * @returns {string} returns[].createdBy - Display name of the user who uploaded the attachment
+     * 
+     * @throws {Error} When the Work Item Tracking API is not initialized
+     * @throws {Error} When workItemId is invalid
+     * @throws {Error} When the work item does not exist
+     * @throws {Error} When authentication or network errors occur
+     * 
+     * @example
+     * const attachments = await manager.getWorkItemAttachments(123);
+     * console.log(`Found ${attachments.length} attachments`);
+     * attachments.forEach(attachment => {
+     *   console.log(`${attachment.name} (${attachment.size} bytes)`);
+     * });
+     */
+    async getWorkItemAttachments(workItemId) {
+        if (!this.workItemTrackingApi) {
+            throw new Error('Work Item Tracking API not initialized. Call initialize() first.');
+        }
+
+        if (!workItemId || isNaN(parseInt(workItemId)) || parseInt(workItemId) <= 0) {
+            throw new Error('Valid work item ID is required');
+        }
+
+        workItemId = parseInt(workItemId);
+
+        try {
+            console.log(`📎 Retrieving attachments for work item: ${workItemId}`);
+            
+            // Get the work item with relations to find attachments
+            const workItem = await this._retryOperation(async () => {
+                return await this.workItemTrackingApi.getWorkItem(
+                    workItemId,
+                    null, // fields
+                    null, // asOf
+                    'relations' // expand relations to get attachments
+                );
+            });
+
+            if (!workItem || !workItem.relations) {
+                console.log(`No attachments found for work item ${workItemId}`);
+                return [];
+            }
+
+            // Filter for attachment relations
+            const attachmentRelations = workItem.relations.filter(relation => 
+                relation.rel === 'AttachedFile'
+            );
+
+            if (attachmentRelations.length === 0) {
+                console.log(`No attachments found for work item ${workItemId}`);
+                return [];
+            }
+
+            console.log(`✅ Found ${attachmentRelations.length} attachments for work item ${workItemId}`);
+
+            return attachmentRelations.map(relation => ({
+                id: relation.url.split('/').pop(), // Extract attachment ID from URL
+                name: relation.attributes?.name || 'Unknown',
+                url: relation.url,
+                size: relation.attributes?.resourceSize || 0,
+                createdDate: relation.attributes?.resourceCreatedDate || null,
+                createdBy: relation.attributes?.authorizedDate || 'Unknown'
+            }));
+
+        } catch (error) {
+            console.error(`❌ Failed to retrieve attachments for work item ${workItemId}:`, error.message);
+            throw this._handleError(error, 'retrieve work item attachments');
+        }
+    }
+
+    /**
+     * Get comprehensive bug details
+     * 
+     * @async
+     * @method getBugDetails
+     * @description Retrieves comprehensive details for a Bug work item including basic fields,
+     * Bug-specific fields, comments, attachments, and relationships. This provides a complete
+     * view of the bug for analysis and reporting purposes.
+     * 
+     * @param {number|string} workItemId - The ID of the bug work item to analyze
+     * 
+     * @returns {Promise<Object>} Promise resolving to comprehensive bug details object containing:
+     * @returns {Object} returns.basicInfo - Basic work item information (id, title, description, etc.)
+     * @returns {Object} returns.bugFields - Bug-specific fields (severity, reproSteps, foundIn, systemInfo)
+     * @returns {Array} returns.comments - All comments associated with the bug
+     * @returns {Array} returns.attachments - All attachments associated with the bug
+     * @returns {Array} returns.relations - All work item relationships
+     * 
+     * @throws {Error} When the work item is not a Bug type
+     * @throws {Error} When the Work Item Tracking API is not initialized
+     * @throws {Error} When workItemId is invalid
+     * @throws {Error} When the work item does not exist
+     * @throws {Error} When authentication or network errors occur
+     * 
+     * @example
+     * const bugDetails = await manager.getBugDetails(123);
+     * console.log(`Bug: ${bugDetails.basicInfo.title}`);
+     * console.log(`Severity: ${bugDetails.bugFields.severity}`);
+     * console.log(`Comments: ${bugDetails.comments.length}`);
+     * console.log(`Attachments: ${bugDetails.attachments.length}`);
+     */
+    async getBugDetails(workItemId) {
+        console.log(`🔍 Getting comprehensive details for bug: ${workItemId}`);
+
+        // First get the basic work item details
+        const workItem = await this.getWorkItem(workItemId);
+        
+        // Verify this is a Bug work item
+        if (workItem.workItemType !== 'Bug') {
+            throw new Error(`Work item ${workItemId} is not a Bug (type: ${workItem.workItemType})`);
+        }
+
+        // Get comments and attachments in parallel for efficiency
+        const [comments, attachments] = await Promise.all([
+            this.getWorkItemComments(workItemId).catch(error => {
+                console.warn(`⚠️ Failed to get comments: ${error.message}`);
+                return [];
+            }),
+            this.getWorkItemAttachments(workItemId).catch(error => {
+                console.warn(`⚠️ Failed to get attachments: ${error.message}`);
+                return [];
+            })
+        ]);
+
+        const result = {
+            basicInfo: {
+                id: workItem.id,
+                title: workItem.title,
+                description: workItem.description,
+                state: workItem.state,
+                workItemType: workItem.workItemType,
+                assignedTo: workItem.assignedTo,
+                priority: workItem.priority,
+                iterationPath: workItem.iterationPath,
+                areaPath: workItem.areaPath,
+                tags: workItem.tags,
+                url: workItem.url,
+                createdDate: workItem.createdDate,
+                changedDate: workItem.changedDate,
+                createdBy: workItem.createdBy,
+                changedBy: workItem.changedBy
+            },
+            bugFields: {
+                severity: workItem.severity,
+                reproSteps: workItem.reproSteps,
+                foundIn: workItem.foundIn,
+                systemInfo: workItem.systemInfo
+            },
+            comments: comments,
+            attachments: attachments,
+            relations: workItem.relations || []
+        };
+
+        console.log(`✅ Retrieved comprehensive bug details: ${result.comments.length} comments, ${result.attachments.length} attachments`);
+        return result;
+    }
+
+    /**
+     * Extract work item ID from Azure DevOps URL
+     * 
+     * @static
+     * @method extractWorkItemIdFromUrl
+     * @description Parses an Azure DevOps work item URL to extract the work item ID.
+     * Supports various Azure DevOps URL formats including legacy and modern formats.
+     * 
+     * @param {string} url - The Azure DevOps work item URL
+     * 
+     * @returns {number|null} The extracted work item ID, or null if not found
+     * 
+     * @example
+     * const id = WorkItemManager.extractWorkItemIdFromUrl('https://dev.azure.com/org/project/_workitems/edit/123');
+     * console.log(id); // 123
+     * 
+     * @example
+     * const id = WorkItemManager.extractWorkItemIdFromUrl('https://org.visualstudio.com/project/_workitems?id=456');
+     * console.log(id); // 456
+     */
+    static extractWorkItemIdFromUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return null;
+        }
+
+        // Common Azure DevOps URL patterns for work items
+        const patterns = [
+            // Modern format: https://dev.azure.com/{organization}/{project}/_workitems/edit/{id}
+            /\/_workitems\/edit\/(\d+)/i,
+            // Legacy format: https://{organization}.visualstudio.com/{project}/_workitems?id={id}
+            /[?&]id=(\d+)/i,
+            // Direct ID in URL: https://dev.azure.com/{organization}/{project}/_workitems/{id}
+            /\/_workitems\/(\d+)(?:\?|$)/i,
+            // Bug-specific URLs: https://dev.azure.com/{organization}/{project}/_workitems/edit/{id}/Bug
+            /\/_workitems\/edit\/(\d+)\/bug/i,
+            // Alternative formats
+            /workitems[\/=](\d+)/i
+        ];
+
+        for (const pattern of patterns) {
+            const match = url.match(pattern);
+            if (match && match[1]) {
+                const id = parseInt(match[1]);
+                if (id > 0) {
+                    return id;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Search for work items using Work Item Query Language (WIQL)
      * 
      * @async
