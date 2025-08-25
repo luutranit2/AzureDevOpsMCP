@@ -28,7 +28,8 @@
  */
 
 import dotenv from 'dotenv';
-import { AzureDevOpsIntegration } from './src/modules/azureDevOpsIntegration.js';
+import AzureDevOpsIntegration from './src/modules/azureDevOpsIntegration.js';
+import { CodeReviewManager } from './src/modules/codeReviewManager.js';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -67,6 +68,13 @@ async function main() {
         
         if (isConnected) {
             console.log('✅ Successfully connected to Azure DevOps');
+            
+            // Test code review manager
+            console.log('\n🔍 Initializing Code Review Manager...');
+            const codeReviewManager = new CodeReviewManager(azureDevOps.webApi, process.env.AZURE_DEVOPS_PROJECT);
+            await codeReviewManager.initialize();
+            console.log('✅ Code Review Manager initialized successfully');
+            
         } else {
             console.log('❌ Failed to connect to Azure DevOps');
         }
@@ -78,10 +86,10 @@ async function main() {
 }
 
 // Run the main function if this file is executed directly
-// This allows the file to be used both as a module and as a standalone script
 if (import.meta.url === `file://${process.argv[1]}`) {
-    main();
+    main().catch(console.error);
 }
 
-// Export the main integration class for use in other modules
-export { AzureDevOpsIntegration };
+// Export for use by other modules
+export default AzureDevOpsIntegration;
+export { CodeReviewManager };

@@ -71,7 +71,7 @@ export class TestCaseManager {
             // Note: Test API may not be available in all Azure DevOps configurations
             try {
                 this.testApi = await this.webApi.getTestApi();
-                console.log('✅ Test Case Manager APIs initialized successfully');
+                // Initialization logging suppressed for MCP mode
             } catch (testApiError) {
                 console.warn('⚠️ Test API not available, using Work Item API only');
                 this.testApi = null;
@@ -290,7 +290,7 @@ export class TestCaseManager {
                 );
             });
 
-            console.log(`✅ Test case created successfully with ID: ${workItem.id}`);
+            // Success logging suppressed for MCP mode
 
             return {
                 id: workItem.id,
@@ -884,6 +884,212 @@ export class TestCaseManager {
     }    
     
     /**
+     * Remove the association between a test case and a user story
+     * 
+     * Removes the "Tests" relationship link between a test case and user story work item,
+     * breaking the traceability connection. This operation removes both the forward link
+     * from the test case and the back-link from the user story. The operation is useful
+     * when test cases are no longer relevant to specific user stories or when reorganizing
+     * test coverage assignments.
+     * 
+     * @async
+     * @method removeTestCaseFromUserStory
+     * @param {number|string} testCaseId - The ID of the test case to disassociate (must be positive integer)
+     * @param {number|string} userStoryId - The ID of the user story to disassociate from (must be positive integer)
+     * 
+     * @returns {Promise<Object>} Promise that resolves to the disassociation operation result
+     * @returns {boolean} returns.success - Whether the disassociation was successful
+     * @returns {number} returns.testCaseId - The ID of the disassociated test case
+     * @returns {number} returns.userStoryId - The ID of the disassociated user story
+     * @returns {string} returns.testCaseTitle - Title of the test case that was unlinked
+     * @returns {string} returns.userStoryTitle - Title of the user story that was unlinked
+     * @returns {string} returns.removedLinkType - The type of relationship that was removed ("Tested By")
+     * @returns {Date} returns.removedAt - Timestamp when the disassociation occurred
+     * @returns {string} returns.message - Confirmation message about the disassociation
+     * 
+     * @throws {Error} Throws error if Work Item Tracking API is not initialized
+     * @throws {Error} Throws error if testCaseId is missing, invalid, or not a positive integer
+     * @throws {Error} Throws error if userStoryId is missing, invalid, or not a positive integer
+     * @throws {Error} Throws error for Azure DevOps API authentication issues (401)
+     * @throws {Error} Throws error for insufficient permissions to modify work item relationships (403)
+     * @throws {Error} Throws error if test case or user story does not exist (404)
+     * @throws {Error} Throws error if no relationship exists between the work items (404)
+     * @throws {Error} Throws error for invalid work item types or malformed request (400)
+     * @throws {Error} Throws error for Azure DevOps service issues (500+)
+     * 
+     * @description
+     * **Operation Details:**
+     * - Locates the existing "Tests" relationship between the work items
+     * - Removes the relationship link using Azure DevOps REST API
+     * - Validates that both work items exist and are of correct types
+     * - Confirms the relationship exists before attempting removal
+     * 
+     * **Use Cases:**
+     * - Test case is no longer relevant to the user story
+     * - User story requirements have changed significantly
+     * - Test coverage is being reorganized or consolidated
+     * - Incorrect associations need to be corrected
+     * - Test cases are being moved to different user stories
+     * 
+     * **Impact Considerations:**
+     * - Removes traceability between requirement and verification
+     * - May affect test coverage reports and metrics
+     * - Does not delete the work items themselves
+     * - Operation can be reversed by re-associating the items
+     * 
+     * @example
+     * // Basic test case to user story disassociation
+     * const result = await testManager.removeTestCaseFromUserStory(123, 456);
+     * console.log(`Removed association between test case ${result.testCaseId} and user story ${result.userStoryId}`);
+     * 
+     * @example
+     * // Remove association with error handling
+     * try {
+     *   const result = await testManager.removeTestCaseFromUserStory(789, 101);
+     *   console.log('Association removed:', result.message);
+     *   console.log(`Unlinked "${result.testCaseTitle}" from "${result.userStoryTitle}"`);
+     * } catch (error) {
+     *   if (error.message.includes('404')) {
+     *     console.log('No association exists between these work items');
+     *   } else {
+     *     console.error('Disassociation failed:', error.message);
+     *   }
+     * }
+     * 
+     * @example
+     * // Batch removal of multiple test case associations
+     * const userStoryId = 234;
+     * const testCaseIds = [301, 302, 303];
+     * const removals = [];
+     * 
+     * for (const testCaseId of testCaseIds) {
+     *   try {
+     *     const result = await testManager.removeTestCaseFromUserStory(testCaseId, userStoryId);
+     *     removals.push({ testCaseId, success: true, result });
+     *   } catch (error) {
+     *     removals.push({ testCaseId, success: false, error: error.message });
+     *   }
+     * }
+     * 
+     * console.log('Removal results:', removals);
+     * 
+     * @example
+     * // Verify association exists before removal
+     * const testCaseId = 567;
+     * const userStoryId = 890;
+     * 
+     * try {
+     *   // Get test case with relationships to check if association exists
+     *   const testCase = await testManager.getTestCase(testCaseId);
+     *   const hasAssociation = testCase.relations?.some(rel => 
+     *     rel.url.includes(userStoryId.toString()) && 
+     *     rel.rel.includes('TestedBy')
+     *   );
+     *   
+     *   if (hasAssociation) {
+     *     const result = await testManager.removeTestCaseFromUserStory(testCaseId, userStoryId);
+     *     console.log('Successfully removed existing association');
+     *   } else {
+     *     console.log('No association exists to remove');
+     *   }
+     * } catch (error) {
+     *   console.error('Failed to remove association:', error.message);
+     * }
+     * 
+     * @since 1.0.0
+     * @see {@link https://docs.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/update} Work Item Update API for Relationships
+     * @see {@link https://docs.microsoft.com/en-us/azure/devops/boards/queries/link-type-reference} Work Item Link Types Reference
+     */
+    async removeTestCaseFromUserStory(testCaseId, userStoryId) {
+        if (!this.workItemTrackingApi) {
+            throw new Error('Work Item Tracking API not initialized. Call initialize() first.');
+        }
+
+        if (!testCaseId || isNaN(parseInt(testCaseId)) || parseInt(testCaseId) <= 0) {
+            throw new Error('Valid test case ID is required');
+        }
+
+        if (!userStoryId || isNaN(parseInt(userStoryId)) || parseInt(userStoryId) <= 0) {
+            throw new Error('Valid user story ID is required');
+        }
+
+        // Convert strings to numbers if needed
+        testCaseId = parseInt(testCaseId);
+        userStoryId = parseInt(userStoryId);
+
+        try {
+            console.log(`🔗 Removing association between test case ${testCaseId} and user story ${userStoryId}`);
+
+            // Get the test case with its relationships to find the link to remove
+            const testCase = await this.getTestCase(testCaseId);
+            const userStory = await this._getWorkItem(userStoryId);
+
+            if (testCase.workItemType !== 'Test Case') {
+                throw new Error(`Work item ${testCaseId} is not a Test Case (Type: ${testCase.workItemType})`);
+            }
+
+            // Get user story type from environment or use default
+            const userStoryType = process.env.AZURE_DEVOPS_USER_STORY_TYPE || 'Product Backlog Item';
+            
+            if (userStory.workItemType !== userStoryType) {
+                throw new Error(`Work item ${userStoryId} is not a ${userStoryType} (Type: ${userStory.workItemType})`);
+            }
+
+            // Find the relationship to remove
+            const relationToRemove = testCase.relations?.find(rel => 
+                rel.url.includes(userStoryId.toString()) && 
+                (rel.rel === 'Microsoft.VSTS.Common.TestedBy-Reverse' || rel.rel.includes('TestedBy'))
+            );
+
+            if (!relationToRemove) {
+                throw new Error(`No association found between test case ${testCaseId} and user story ${userStoryId}`);
+            }
+
+            // Find the index of the relationship to remove
+            const relationIndex = testCase.relations.findIndex(rel => 
+                rel.url.includes(userStoryId.toString()) && 
+                (rel.rel === 'Microsoft.VSTS.Common.TestedBy-Reverse' || rel.rel.includes('TestedBy'))
+            );
+
+            // Create the patch document to remove the relationship
+            const patchDocument = [
+                {
+                    op: 'remove',
+                    path: `/relations/${relationIndex}`
+                }
+            ];
+
+            const result = await this._retryOperation(async () => {
+                return await this.workItemTrackingApi.updateWorkItem(
+                    [], // customHeaders
+                    patchDocument,
+                    testCaseId,
+                    this.project,
+                    false, // validateOnly
+                    true   // bypassRuleValidation
+                );
+            });
+
+            console.log(`✅ Test case association removed successfully`);
+
+            return {
+                testCaseId,
+                userStoryId,
+                testCaseTitle: testCase.title,
+                userStoryTitle: userStory.title,
+                removedLinkType: 'Tested By',
+                removed: true,
+                removedDate: new Date().toISOString(),
+                message: `Successfully removed association between test case "${testCase.title}" and user story "${userStory.title}"`
+            };
+
+        } catch (error) {
+            console.error('❌ Failed to remove test case association:', error.message);
+            throw this._handleError(error, 'remove test case association');
+        }
+    }    
+    
+    /**
      * Retrieves a test case by its unique identifier with optional field filtering
      *
      * This method fetches a comprehensive test case object including all Azure DevOps 
@@ -1403,7 +1609,7 @@ export class TestCaseManager {
 
         try {
             // Debug
-            console.log(`Formatting ${steps.length} test steps with exact working format`);
+            // Debug logging suppressed for MCP mode
             
             // Use the exact XML format that works consistently
             let stepsXml = `<steps id="0" last="${steps.length}">`;
@@ -1415,8 +1621,12 @@ export class TestCaseManager {
                 
                 console.log(`Step ${stepId}: Action=${action.substring(0, 30)}..., ExpectedResult=${expectedResult.substring(0, 30)}...`);
                 
+                // Properly escape XML special characters to prevent parsing issues
+                const escapedAction = this._escapeXmlContent(action);
+                const escapedExpectedResult = this._escapeXmlContent(expectedResult);
+                
                 // Format using the exact format with properly encoded P tags that works in Azure DevOps
-                stepsXml += `<step id="${stepId}" type="ValidateStep"><parameterizedString isformatted="true">&lt;P&gt;${action}&lt;/P&gt;</parameterizedString><parameterizedString isformatted="true">&lt;P&gt;${expectedResult}&lt;/P&gt;</parameterizedString><description/></step>`;
+                stepsXml += `<step id="${stepId}" type="ValidateStep"><parameterizedString isformatted="true">&lt;P&gt;${escapedAction}&lt;/P&gt;</parameterizedString><parameterizedString isformatted="true">&lt;P&gt;${escapedExpectedResult}&lt;/P&gt;</parameterizedString><description/></step>`;
             });
             
             // Close the root element
@@ -1430,6 +1640,34 @@ export class TestCaseManager {
             console.warn('Failed to format test steps:', error.message);
             return null;
         }
+    }
+
+    /**
+     * Escapes XML special characters and handles rich text formatting for Azure DevOps compatibility
+     * 
+     * @private
+     * @method _escapeXmlContent
+     * @param {string} content - The content to escape for XML embedding
+     * @returns {string} XML-safe content with proper character escaping
+     */
+    _escapeXmlContent(content) {
+        if (!content) return '';
+        
+        return content
+            // First escape XML special characters
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            // Handle common rich text formatting that can break XML
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold markdown
+            .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic markdown
+            // Remove or escape problematic characters that can break Azure DevOps parsing
+            .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '') // Remove control characters
+            // Handle line breaks properly for Azure DevOps
+            .replace(/\n/g, '<br/>')
+            .replace(/\r/g, '');
     }    
     
     /**
@@ -1742,7 +1980,7 @@ export class TestCaseManager {
                 // Check if it's a retryable error
                 if (this._isRetryableError(error)) {
                     const delay = this.retryDelay * Math.pow(2, attempt - 1);
-                    console.log(`⚠️ Operation failed (attempt ${attempt}/${this.maxRetries}), retrying in ${delay}ms...`);
+                    // Retry logging suppressed for MCP mode
                     await new Promise(resolve => setTimeout(resolve, delay));
                 } else {
                     break;

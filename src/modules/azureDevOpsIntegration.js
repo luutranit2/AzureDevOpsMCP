@@ -41,7 +41,7 @@
 
 import { AzureDevOpsAuth } from './auth.js';
 import { PullRequestManager } from './pullRequestManager.js';
-import { WorkItemManager } from './workItemManager.js';
+import WorkItemManager from './workItemManager.js';
 import { TestCaseManager } from './testCaseManager.js';
 
 /**
@@ -136,43 +136,45 @@ export class AzureDevOpsIntegration {
      */
     async initialize() {
         try {
-            console.log('🚀 Initializing Azure DevOps Integration...');
+            // Initialization logging suppressed for MCP mode
 
-            // Initialize authentication with enhanced options
-            this.auth = new AzureDevOpsAuth(
-                this.config.organizationUrl,
-                this.config.personalAccessToken,
-                {
-                    maxRetries: 3,
-                    timeout: 30000
-                }
-            );
+            // Initialize authentication with enhanced options (preserve injected mocks)
+            if (!this.auth) {
+                this.auth = new AzureDevOpsAuth(
+                    this.config.organizationUrl,
+                    this.config.personalAccessToken,
+                    {
+                        maxRetries: 3,
+                        timeout: 30000
+                    }
+                );
+            }
 
             const authSuccess = await this.auth.initialize();
             if (!authSuccess) {
                 throw new Error('Failed to initialize Azure DevOps authentication');
             }
 
-            const webApi = this.auth.getWebApi();
+            this.webApi = this.webApi || this.auth.getWebApi();
 
-            // Initialize all managers
-            this.pullRequestManager = new PullRequestManager(webApi, this.config.project);
-            this.workItemManager = new WorkItemManager(webApi, this.config.project);
-            this.testCaseManager = new TestCaseManager(webApi, this.config.project);
+            // Initialize all managers (preserve injected mocks)
+            this.pullRequestManager = this.pullRequestManager || new PullRequestManager(this.webApi, this.config.project);
+            this.workItemManager = this.workItemManager || new WorkItemManager(this.webApi, this.config.project, this.config);
+            this.testCaseManager = this.testCaseManager || new TestCaseManager(this.webApi, this.config.project);
 
-            // Initialize each manager
-            await this.pullRequestManager.initialize();
-            await this.workItemManager.initialize();
-            await this.testCaseManager.initialize();
+            // Initialize each manager if available
+            if (this.pullRequestManager.initialize) await this.pullRequestManager.initialize();
+            if (this.workItemManager.initialize) await this.workItemManager.initialize();
+            if (this.testCaseManager.initialize) await this.testCaseManager.initialize();
 
             this.initialized = true;
-            console.log('✅ Azure DevOps Integration initialized successfully');
+            // Success logging suppressed for MCP mode
             return true;
         } catch (error) {
             console.error('❌ Initialization failed:', error.message);
             return false;
         }
-    }    
+    }
       /**
      * Tests the connection to Azure DevOps services with comprehensive diagnostics
      * 
@@ -1801,16 +1803,22 @@ export class AzureDevOpsIntegration {
     async createUserStory(title, description, additionalFields = {}) {
         await this.ensureInitialized();
         return this.workItemManager.createUserStory(title, description, additionalFields);
-    }
-
-    async createTask(title, description, options = {}) {
+    }    async createTask(title, description, options = {}) {
         await this.ensureInitialized();
         return this.workItemManager.createTask(title, description, options);
     }
 
-    async updateUserStory(workItemId, updates) {
+    async createBug(title, description, options = {}) {
+        await this.ensureInitialized();
+        return this.workItemManager.createBug(title, description, options);
+    }    async updateUserStory(workItemId, updates) {
         await this.ensureInitialized();
         return this.workItemManager.updateUserStory(workItemId, updates);
+    }
+
+    async updateBug(workItemId, updates) {
+        await this.ensureInitialized();
+        return this.workItemManager.updateBug(workItemId, updates);
     }
 
     async deleteUserStory(workItemId) {
@@ -1824,7 +1832,7 @@ export class AzureDevOpsIntegration {
     async linkWorkItems(sourceWorkItemId, targetWorkItemId, linkType = 'Child') {
         await this.ensureInitialized();
         return this.workItemManager.linkWorkItems(sourceWorkItemId, targetWorkItemId, linkType);
-    }async getWorkItem(workItemId, fields = null) {
+    }    async getWorkItem(workItemId, fields = null) {
         await this.ensureInitialized();
         return this.workItemManager.getWorkItem(workItemId, fields);
     }
@@ -1839,399 +1847,147 @@ export class AzureDevOpsIntegration {
         return this.workItemManager.getUserStoriesForFeature(featureId);
     }    
     
-    // ============================================================================
-    // TEST CASE OPERATIONS
-    // ============================================================================
-      /**
-     * Creates a comprehensive test case work item with detailed test steps and metadata
-     * 
-     * @async
-     * @method createTestCase
-     * @description Creates a new test case work item in Azure DevOps with comprehensive
-     * test step definition, automation support, traceability linking, and quality assurance
-     * metadata. This method provides the foundation for structured testing by creating
-     * properly formatted test cases with detailed execution steps and validation criteria.
-     * 
-     * The test case creation process includes:
-     * - Test step validation and formatting with action/expected result pairs
-     * - Test case metadata assignment (priority, automation status, test type)
-     * - Traceability link establishment to user stories and requirements
-     * - Test suite and test plan association support
-     * - Automation framework integration preparation
-     * - Test execution history initialization
-     * - Quality metrics and reporting setup
-     * 
-     * @param {string} title - The title of the test case (required, 1-255 characters)
-     * @param {string} description - Detailed description of what the test case validates and its scope
-     * @param {Array<TestStep>} [steps=[]] - Array of structured test steps with actions and expected results
-     * @param {string} steps[].action - The specific action to perform in this test step (required)
-     * @param {string} steps[].expectedResult - The expected result/outcome for this step (required)
-     * @param {string} [steps[].stepNumber] - Step number for ordering (auto-generated if not provided)
-     * @param {string} [steps[].testData] - Test data or input values for this step
-     * @param {string} [steps[].notes] - Additional notes or instructions for the step
-     * @param {Object} [additionalFields={}] - Additional fields and metadata for the test case
-     * @param {number} [additionalFields.priority=3] - Priority level (1=Critical, 2=High, 3=Medium, 4=Low)
-     * @param {string} [additionalFields.automationStatus='Not Automated'] - Automation status (Not Automated, Planned, Automated)
-     * @param {string} [additionalFields.testType='Functional'] - Type of test (Functional, Performance, Security, Integration)
-     * @param {string} [additionalFields.assignedTo] - Email address of the assigned tester
-     * @param {string} [additionalFields.areaPath] - Area path for organizational hierarchy
-     * @param {string} [additionalFields.iterationPath] - Iteration path for sprint/milestone assignment
-     * @param {Array<string>} [additionalFields.tags] - Array of tags for categorization and filtering
-     * @param {string} [additionalFields.state='Design'] - Initial state (Design, Ready, Active, Closed)
-     * @param {number} [additionalFields.estimatedEffort] - Estimated execution time in minutes
-     * @param {Array<string>} [additionalFields.preconditions] - Prerequisites for test execution
-     * @param {string} [additionalFields.testSuite] - Associated test suite name or identifier
-     * @param {Object} [additionalFields.automationConfig] - Automation framework configuration
-     * @param {Object} [additionalFields.customFields] - Custom field values for organization-specific fields
-     * 
-     * @returns {Promise<TestCaseWorkItem>} Created test case work item with complete metadata
-     * @returns {Promise<TestCaseWorkItem.id>} number - Unique work item identifier
-     * @returns {Promise<TestCaseWorkItem.title>} string - Test case title
-     * @returns {Promise<TestCaseWorkItem.description>} string - Full description
-     * @returns {Promise<TestCaseWorkItem.state>} string - Current work item state
-     * @returns {Promise<TestCaseWorkItem.steps>} Array<TestStep> - Structured test steps
-     * @returns {Promise<TestCaseWorkItem.priority>} number - Priority level
-     * @returns {Promise<TestCaseWorkItem.automationStatus>} string - Automation readiness status
-     * @returns {Promise<TestCaseWorkItem.testType>} string - Type classification
-     * @returns {Promise<TestCaseWorkItem.assignedTo>} Object - Assigned tester information
-     * @returns {Promise<TestCaseWorkItem.createdBy>} Object - Creator information
-     * @returns {Promise<TestCaseWorkItem.createdDate>} Date - Creation timestamp
-     * @returns {Promise<TestCaseWorkItem.url>} string - Web URL for test case access
-     * @returns {Promise<TestCaseWorkItem.tags>} Array<string> - Associated tags
-     * @returns {Promise<TestCaseWorkItem.relations>} Array<Object> - Related work items and requirements
-     * 
-     * @throws {Error} When test case creation fails due to system errors
-     * @throws {ValidationError} When required fields are missing or test steps are malformed
-     * @throws {AuthenticationError} When PAT lacks test case creation permissions
-     * @throws {AuthorizationError} When user lacks permissions in the specified area path
-     * @throws {NetworkError} When Azure DevOps services are unreachable
-     * @throws {QuotaError} When test case limits are exceeded
-     * @throws {FieldValidationError} When field values violate Azure DevOps constraints
-     * 
-     * @since 1.0.0
-     * 
-     * @see {@link https://docs.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/create} Work Items API
-     * @see {@link TestCaseManager#createTestCase} For low-level test case creation
-     * @see {@link AzureDevOpsIntegration#associateTestCaseWithUserStory} For requirement traceability
-     * @see {@link AzureDevOpsIntegration#createUserStory} For creating testable user stories
-     * 
-     * @example
-     * // Basic test case creation
-     * try {
-     *   const testCase = await integration.createTestCase(
-     *     'User Login Validation Test',
-     *     'Validates that users can successfully log in with valid credentials and receive appropriate error messages for invalid attempts.',
-     *     [
-     *       {
-     *         action: 'Navigate to the login page',
-     *         expectedResult: 'Login form is displayed with username and password fields'
-     *       },
-     *       {
-     *         action: 'Enter valid username and password',
-     *         expectedResult: 'Credentials are accepted and form validation passes'
-     *       },
-     *       {
-     *         action: 'Click the Login button',
-     *         expectedResult: 'User is authenticated and redirected to dashboard'
-     *       }
-     *     ]
-     *   );
-     *   
-     *   console.log(`Created test case #${testCase.id}: ${testCase.title}`);
-     *   console.log(`Test steps: ${testCase.steps.length}`);
-     * } catch (error) {
-     *   console.error('Failed to create test case:', error.message);
-     * }
-     * 
-     * @example
-     * // Comprehensive test case with full metadata
-     * const comprehensiveTestCase = await integration.createTestCase(
-     *   'E-Commerce Checkout Process - Happy Path',
-     *   'Validates the complete e-commerce checkout flow from cart review to order confirmation, ensuring all payment methods work correctly and order data is properly stored.',
-     *   [
-     *     {
-     *       action: 'Add items to shopping cart',
-     *       expectedResult: 'Items appear in cart with correct quantities and prices',
-     *       testData: 'Product ID: 12345, Quantity: 2'
-     *     },
-     *     {
-     *       action: 'Proceed to checkout',
-     *       expectedResult: 'Checkout page loads with cart summary'
-     *     },
-     *     {
-     *       action: 'Enter shipping information',
-     *       expectedResult: 'Shipping form validates and accepts address',
-     *       testData: 'Address: 123 Test St, Test City, TC 12345'
-     *     },
-     *     {
-     *       action: 'Select payment method',
-     *       expectedResult: 'Payment options are available and selectable',
-     *       testData: 'Credit Card: **** **** **** 1234'
-     *     },
-     *     {
-     *       action: 'Submit order',
-     *       expectedResult: 'Order is processed and confirmation page displayed'
-     *     },
-     *     {
-     *       action: 'Verify email confirmation',
-     *       expectedResult: 'Order confirmation email is received within 5 minutes'
-     *     }
-     *   ],
-     *   {
-     *     priority: 1,
-     *     automationStatus: 'Planned',
-     *     testType: 'Integration',
-     *     assignedTo: 'qa.engineer@company.com',
-     *     areaPath: 'ECommerce\\Checkout',
-     *     iterationPath: 'ECommerce\\Sprint 15',
-     *     tags: ['checkout', 'payment', 'critical-path', 'e2e'],
-     *     estimatedEffort: 15,
-     *     preconditions: [
-     *       'Test environment is available',
-     *       'Test products are configured',
-     *       'Payment gateway is in test mode',
-     *       'Test user account exists'
-     *     ],
-     *     testSuite: 'E-Commerce Core Functions',
-     *     automationConfig: {
-     *       framework: 'Selenium WebDriver',
-     *       browser: 'Chrome',
-     *       environment: 'staging'
-     *     }
-     *   }
-     * );
-     * 
-     * @example
-     * // Automated test case creation from requirements
-     * class TestCaseGenerator {
-     *   constructor(integration) {
-     *     this.integration = integration;
-     *   }
-     *   
-     *   async generateTestCasesFromUserStory(userStory) {
-     *     const testCases = [];
-     *     
-     *     // Parse acceptance criteria into test scenarios
-     *     const scenarios = this.parseAcceptanceCriteria(userStory.acceptanceCriteria);
-     *     
-     *     for (const scenario of scenarios) {
-     *       try {
-     *         const testCase = await this.integration.createTestCase(
-     *           `${userStory.title} - ${scenario.name}`,
-     *           `Test case for: ${scenario.description}`,
-     *           scenario.steps,
-     *           {
-     *             priority: userStory.priority,
-     *             automationStatus: 'Planned',
-     *             testType: scenario.type,
-     *             tags: [...(userStory.tags || []), 'auto-generated', scenario.type],
-     *             areaPath: userStory.areaPath,
-     *             iterationPath: userStory.iterationPath
-     *           }
-     *         );
-     *         
-     *         // Link test case to user story
-     *         await this.integration.associateTestCaseWithUserStory(testCase.id, userStory.id);
-     *         
-     *         testCases.push(testCase);
-     *         console.log(`✅ Generated test case: ${testCase.title}`);
-     *         
-     *       } catch (error) {
-     *         console.error(`❌ Failed to generate test case for scenario: ${scenario.name}`, error.message);
-     *       }
-     *     }
-     *     
-     *     return testCases;
-     *   }
-     *   
-     *   parseAcceptanceCriteria(criteria) {
-     *     // Parse Gherkin-style acceptance criteria into test scenarios
-     *     const scenarios = [];
-     *     const lines = criteria.split('\\n').filter(line => line.trim());
-     *     
-     *     let currentScenario = null;
-     *     
-     *     for (const line of lines) {
-     *       if (line.trim().startsWith('Scenario:')) {
-     *         if (currentScenario) scenarios.push(currentScenario);
-     *         currentScenario = {
-     *           name: line.replace('Scenario:', '').trim(),
-     *           description: '',
-     *           steps: [],
-     *           type: 'Functional'
-     *         };
-     *       } else if (line.trim().startsWith('Given')) {
-     *         if (currentScenario) {
-     *           currentScenario.steps.push({
-     *             action: `Setup: ${line.replace('Given', '').trim()}`,
-     *             expectedResult: 'Precondition is established'
-     *           });
-     *         }
-     *       } else if (line.trim().startsWith('When')) {
-     *         if (currentScenario) {
-     *           currentScenario.steps.push({
-     *             action: line.replace('When', '').trim(),
-     *             expectedResult: 'Action is performed successfully'
-     *           });
-     *         }
-     *       } else if (line.trim().startsWith('Then')) {
-     *         if (currentScenario && currentScenario.steps.length > 0) {
-     *           const lastStep = currentScenario.steps[currentScenario.steps.length - 1];
-     *           lastStep.expectedResult = line.replace('Then', '').trim();
-     *         }
-     *       }
-     *     }
-     *     
-     *     if (currentScenario) scenarios.push(currentScenario);
-     *     return scenarios;
-     *   }
-     * }
-     * 
-     * @example
-     * // Bulk test case creation with progress tracking
-     * async function createTestSuite(testSuiteDefinition) {
-     *   const { name, description, testCases } = testSuiteDefinition;
-     *   
-     *   console.log(`📋 Creating test suite: ${name}`);
-     *   console.log(`Test cases to create: ${testCases.length}`);
-     *   
-     *   const results = {
-     *     successful: [],
-     *     failed: [],
-     *     suite: name
-     *   };
-     *   
-     *   for (const [index, testCaseDef] of testCases.entries()) {
-     *     try {
-     *       console.log(`Creating test case ${index + 1}/${testCases.length}: ${testCaseDef.title}`);
-     *       
-     *       const testCase = await integration.createTestCase(
-     *         testCaseDef.title,
-     *         testCaseDef.description,
-     *         testCaseDef.steps,
-     *         {
-     *           ...testCaseDef.additionalFields,
-     *           testSuite: name,
-     *           tags: [...(testCaseDef.additionalFields?.tags || []), 'test-suite', name.toLowerCase().replace(/\\s+/g, '-')]
-     *         }
-     *       );
-     *       
-     *       results.successful.push({
-     *         id: testCase.id,
-     *         title: testCase.title,
-     *         url: testCase.url
-     *       });
-     *       
-     *       // Progress indicator
-     *       const progress = Math.round((index + 1) / testCases.length * 100);
-     *       console.log(`Progress: ${progress}% (${index + 1}/${testCases.length})`);
-     *       
-     *       // Rate limiting
-     *       await new Promise(resolve => setTimeout(resolve, 200));
-     *       
-     *     } catch (error) {
-     *       console.error(`❌ Failed to create test case: ${testCaseDef.title}`, error.message);
-     *       results.failed.push({
-     *         title: testCaseDef.title,
-     *         error: error.message
-     *       });
-     *     }
-     *   }
-     *   
-     *   console.log(`\\n📊 Test Suite Creation Summary:`);
-     *   console.log(`Suite: ${name}`);
-     *   console.log(`✅ Successful: ${results.successful.length}`);
-     *   console.log(`❌ Failed: ${results.failed.length}`);
-     *   console.log(`📈 Success Rate: ${Math.round((results.successful.length / testCases.length) * 100)}%`);
-     *   
-     *   if (results.failed.length > 0) {
-     *     console.log('\\n❌ Failed Test Cases:');
-     *     results.failed.forEach(failure => {
-     *       console.log(`  - ${failure.title}: ${failure.error}`);
-     *     });
-     *   }
-     *   
-     *   return results;
-     * }
-     * 
-     * @example
-     * // Performance test case creation
-     * async function createPerformanceTestCase() {
-     *   return await integration.createTestCase(
-     *     'User Login Performance Test',
-     *     'Validates that user login completes within acceptable performance thresholds under normal and peak load conditions.',
-     *     [
-     *       {
-     *         action: 'Execute 100 concurrent login attempts',
-     *         expectedResult: 'All login attempts complete within 3 seconds',
-     *         testData: 'Concurrent users: 100, Duration: 60 seconds'
-     *       },
-     *       {
-     *         action: 'Monitor server resource utilization',
-     *         expectedResult: 'CPU usage remains below 80%, Memory usage below 75%'
-     *       },
-     *       {
-     *         action: 'Measure response times',
-     *         expectedResult: '95th percentile response time < 2 seconds, Average < 1 second'
-     *       },
-     *       {
-     *         action: 'Verify no errors or timeouts',
-     *         expectedResult: 'Error rate < 0.1%, No timeout errors'
-     *       }
-     *     ],
-     *     {
-     *       priority: 2,
-     *       automationStatus: 'Automated',
-     *       testType: 'Performance',
-     *       estimatedEffort: 30,
-     *       tags: ['performance', 'load-testing', 'login', 'automated'],
-     *       automationConfig: {
-     *         framework: 'JMeter',
-     *         testPlan: 'login-performance.jmx',
-     *         environment: 'performance-test'
-     *       },
-     *       preconditions: [
-     *         'Performance test environment is configured',
-     *         'Test data is loaded (100 user accounts)',
-     *         'Monitoring tools are active',
-     *         'Baseline metrics are established'
-     *       ]
-     *     }
-     *   );
-     * }
+    /**
+     * Add a comment to a work item
+     * @param {number|string} workItemId - The ID of the work item
+     * @param {string} comment - The comment text
+     * @returns {Promise<Object>} - The created comment response
+     */
+    async addWorkItemComment(workItemId, comment) {
+        return await this.workItemManager.addWorkItemComment(workItemId, comment);
+    }
+
+    /**
+     * Get comments for a work item
+     * @param {number|string} workItemId - The ID of the work item
+     * @param {Object} options - Optional parameters
+     * @returns {Promise<Object>} - The comments response
+     */
+    async getWorkItemComments(workItemId, options = {}) {
+        return await this.workItemManager.getWorkItemComments(workItemId, options);
+    }
+
+    /**
+     * Update a work item comment
+     * @param {number|string} workItemId - The ID of the work item
+     * @param {number|string} commentId - The ID of the comment to update
+     * @param {string} text - The new comment text
+     * @returns {Promise<Object>} - The updated comment response
+     */
+    async updateWorkItemComment(workItemId, commentId, text) {
+        return await this.workItemManager.updateWorkItemComment(workItemId, commentId, text);
+    }
+
+    /**
+     * Delete a work item comment
+     * @param {number|string} workItemId - The ID of the work item
+     * @param {number|string} commentId - The ID of the comment to delete
+     * @returns {Promise<Object>} - The deletion response
+     */
+    async deleteWorkItemComment(workItemId, commentId) {
+        return await this.workItemManager.deleteWorkItemComment(workItemId, commentId);
+    }
+
+    // Test Case Management Methods
+    
+    /**
+     * Create a new test case
+     * @param {string} title - The title of the test case
+     * @param {string} description - The description of the test case
+     * @param {Array} steps - Array of test steps with action and expectedResult
+     * @param {Object} additionalFields - Additional fields for the test case
+     * @returns {Promise<Object>} - The created test case response
      */
     async createTestCase(title, description, steps = [], additionalFields = {}) {
         await this.ensureInitialized();
         return this.testCaseManager.createTestCase(title, description, steps, additionalFields);
     }
 
+    /**
+     * Update an existing test case
+     * @param {number|string} testCaseId - The ID of the test case to update
+     * @param {Object} updates - Updates to apply to the test case
+     * @returns {Promise<Object>} - The updated test case response
+     */
     async updateTestCase(testCaseId, updates) {
         await this.ensureInitialized();
         return this.testCaseManager.updateTestCase(testCaseId, updates);
     }
 
-    async deleteTestCase(testCaseId) {
-        await this.ensureInitialized();
-        return this.testCaseManager.deleteTestCase(testCaseId);
-    }
-
-    async associateTestCaseWithUserStory(testCaseId, userStoryId) {
-        await this.ensureInitialized();
-        return this.testCaseManager.associateTestCaseWithUserStory(testCaseId, userStoryId);
-    }
-
+    /**
+     * Get a test case by ID
+     * @param {number|string} testCaseId - The ID of the test case to retrieve
+     * @param {Array} fields - Optional array of fields to retrieve
+     * @returns {Promise<Object>} - The test case response
+     */
     async getTestCase(testCaseId, fields = null) {
         await this.ensureInitialized();
         return this.testCaseManager.getTestCase(testCaseId, fields);
     }
 
-    async searchTestCases(wiql) {
+    /**
+     * Associate a test case with a user story
+     * @param {number|string} testCaseId - The ID of the test case
+     * @param {number|string} userStoryId - The ID of the user story
+     * @returns {Promise<Object>} - The association response
+     */
+    async associateTestCaseWithUserStory(testCaseId, userStoryId) {
         await this.ensureInitialized();
-        return this.testCaseManager.searchTestCases(wiql);
+        return this.testCaseManager.associateTestCaseWithUserStory(testCaseId, userStoryId);
     }
 
-    async getTestCasesForUserStory(userStoryId) {
+    /**
+     * Delete a test case permanently from Azure DevOps
+     * @param {number|string} testCaseId - The ID of the test case to delete
+     * @returns {Promise<Object>} - The deletion response with success status and details
+     */
+    async deleteTestCase(testCaseId) {
         await this.ensureInitialized();
-        return this.testCaseManager.getTestCasesForUserStory(userStoryId);
+        try {
+            const result = await this.testCaseManager.deleteTestCase(testCaseId);
+            return {
+                success: true,
+                id: result.id,
+                title: result.title,
+                deleted: result.deleted,
+                deletedDate: result.deletedDate
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message
+            };
+        }
     }
+
+    /**
+     * Remove the association between a test case and a user story
+     * @param {number|string} testCaseId - The ID of the test case to disassociate
+     * @param {number|string} userStoryId - The ID of the user story to disassociate from
+     * @returns {Promise<Object>} - The disassociation response with success status and details
+     */
+    async removeTestCaseFromUserStory(testCaseId, userStoryId) {
+        await this.ensureInitialized();
+        try {
+            const result = await this.testCaseManager.removeTestCaseFromUserStory(testCaseId, userStoryId);
+            return {
+                success: true,
+                testCaseId: result.testCaseId,
+                userStoryId: result.userStoryId,
+                testCaseTitle: result.testCaseTitle,
+                userStoryTitle: result.userStoryTitle,
+                removed: result.removed,
+                removedDate: result.removedDate,
+                message: result.message
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
 }
+
+export default AzureDevOpsIntegration;

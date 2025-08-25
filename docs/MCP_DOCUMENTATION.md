@@ -8,10 +8,15 @@ The Azure DevOps MCP (Model Context Protocol) Server is a Node.js application th
 
 ### 🎯 Work Item Management
 - Create and update user stories
+- Create and update bugs with comprehensive tracking
+- Create tasks with parent-child relationships
 - Link user stories to features
 - Search work items using WIQL queries
 - Get detailed work item information
-- Create tasks with parent-child relationships
+- Priority and severity management for bugs
+- Steps to reproduce and system information tracking
+- **Add, retrieve, update, and delete work item comments**
+- **Full comment thread management for all work item types**
 
 ### 🧪 Test Case Management
 - Create and update test cases
@@ -24,7 +29,16 @@ The Azure DevOps MCP (Model Context Protocol) Server is a Node.js application th
 - Retrieve pull request details and metadata
 - Get pull request comments and threads
 - Add comments to pull requests
+- **Reply to existing comment threads** ✨ NEW
 - Access commit history and work item associations
+
+### 🔍 Code Review Analysis
+- **Analyze code review comments in pull requests**
+- **Generate actionable fix suggestions**
+- **Categorize issues by type and severity**
+- **Provide effort estimates and action items**
+- **Track common issues and patterns**
+- **Support for Azure DevOps pull request URLs**
 
 ### 🔧 System Operations
 - Test Azure DevOps connection
@@ -43,6 +57,7 @@ Azure DevOps MCP Server
 │   │   ├── workItemManager.js       # Work item operations
 │   │   ├── testCaseManager.js       # Test case operations
 │   │   ├── pullRequestManager.js    # Pull request operations
+│   │   ├── codeReviewManager.js     # Code review analysis
 │   │   └── auth.js                  # Authentication handling
 │   └── utils/
 │       └── helpers.js               # Utility functions
@@ -95,37 +110,110 @@ Retrieves details of a specific user story.
 - `workItemId` (required): The ID of the user story to retrieve
 
 #### `link_user_story_to_feature`
-Links a user story to a feature as parent-child relationship.
+Links a user story to a feature as a parent-child relationship.
 
 **Parameters:**
 - `userStoryId` (required): The ID of the user story
 - `featureId` (required): The ID of the feature to link to
 
-#### `search_work_items`
-Searches for work items using WIQL (Work Item Query Language).
+### Work Item Comment Tools
+
+#### `add_work_item_comment`
+Adds a comment to any work item (bug, user story, task, etc.).
 
 **Parameters:**
-- `wiql` (required): WIQL query string
+- `workItemId` (required): The ID of the work item to comment on
+- `comment` (required): The comment text to add
 
-**Example WIQL:**
-```sql
-SELECT [System.Id], [System.Title], [System.State] 
-FROM WorkItems 
-WHERE [System.WorkItemType] = 'User Story' 
-AND [System.State] = 'Active'
+**Example:**
+```json
+{
+  "workItemId": 123,
+  "comment": "This issue has been investigated and a fix is in progress."
+}
 ```
 
-#### `create_task`
-Creates a new task, optionally linked to a parent work item.
+**Response:**
+```json
+{
+  "success": true,
+  "comment": {
+    "id": 456,
+    "text": "This issue has been investigated and a fix is in progress.",
+    "createdBy": "user@example.com",
+    "createdDate": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+#### `get_work_item_comments`
+Retrieves all comments for a work item.
 
 **Parameters:**
-- `title` (required): The title of the task
-- `description` (required): The description of the task
-- `parentId` (optional): The ID of the parent work item
-- `assignedTo` (optional): Email or display name of assignee
-- `priority` (optional): Priority level (1-4)
-- `originalEstimate` (optional): Original estimate in hours
-- `activity` (optional): Activity type (Development, Testing, Design, etc.)
+- `workItemId` (required): The ID of the work item to get comments for
+- `top` (optional): Maximum number of comments to retrieve
+- `includeDeleted` (optional): Whether to include deleted comments
+- `expand` (optional): What additional data to include (reactions, mentions, etc.)
+
+**Example:**
+```json
+{
+  "workItemId": 123,
+  "top": 10,
+  "includeDeleted": false
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 3,
+  "comments": [
+    {
+      "id": 456,
+      "text": "This is the latest comment",
+      "createdBy": {
+        "displayName": "John Doe",
+        "email": "john@example.com"
+      },
+      "createdDate": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+#### `update_work_item_comment`
+Updates an existing work item comment.
+
+**Parameters:**
+- `workItemId` (required): The ID of the work item
+- `commentId` (required): The ID of the comment to update
+- `text` (required): The new comment text
+
+**Example:**
+```json
+{
+  "workItemId": 123,
+  "commentId": 456,
+  "text": "Updated comment text with additional information."
+}
+```
+
+#### `delete_work_item_comment`
+Deletes a work item comment.
+
+**Parameters:**
+- `workItemId` (required): The ID of the work item
+- `commentId` (required): The ID of the comment to delete
+
+**Example:**
+```json
+{
+  "workItemId": 123,
+  "commentId": 456
+}
+```
 
 ### Test Case Tools
 
@@ -173,8 +261,10 @@ Retrieves detailed information about a pull request.
 
 **Parameters:**
 - `repositoryId` (required): The ID of the repository
-- `pullRequestId` (required): The ID of the pull request
+- `pullRequestId` (required): The ID of the pull request (accepts both number and string types)
 - `includeDetails` (optional): Include detailed information (commits, work items) - default: true
+
+**Note:** The `pullRequestId` parameter accepts both number and string types for flexibility, but is automatically converted to a number internally as required by the Azure DevOps API.
 
 **Response includes:**
 - Pull request metadata (title, description, status)
@@ -189,17 +279,162 @@ Retrieves comments from a pull request.
 
 **Parameters:**
 - `repositoryId` (required): The ID of the repository
-- `pullRequestId` (required): The ID of the pull request
+- `pullRequestId` (required): The ID of the pull request (accepts both number and string types)
+
+**Note:** The `pullRequestId` parameter accepts both number and string types for flexibility, but is automatically converted to a number internally as required by the Azure DevOps API.
 
 #### `add_pull_request_comment`
 Adds a comment to a pull request file.
 
 **Parameters:**
 - `repositoryId` (required): The ID of the repository
-- `pullRequestId` (required): The ID of the pull request
+- `pullRequestId` (required): The ID of the pull request (accepts both number and string types)
 - `filePath` (required): Path to the file to comment on
 - `comment` (required): The comment text
 - `line` (optional): Line number for the comment
+
+**Note:** The `pullRequestId` parameter accepts both number and string types for flexibility, but is automatically converted to a number internally as required by the Azure DevOps API.
+
+#### `reply_to_pull_request_comment`
+Replies to an existing comment in a pull request thread, maintaining conversation flow.
+
+**Parameters:**
+- `repositoryId` (required): The ID of the repository
+- `pullRequestId` (required): The ID of the pull request (accepts both number and string types)
+- `parentCommentId` (required): The ID of the comment to reply to (accepts both number and string types)
+- `reply` (required): The reply text
+
+**Note:** Both `pullRequestId` and `parentCommentId` parameters accept both number and string types for flexibility, but are automatically converted to numbers internally as required by the Azure DevOps API.
+
+**Example Usage:**
+```javascript
+// Reply to a code review comment
+const result = await reply_to_pull_request_comment({
+  repositoryId: '5d794f1b-8665-4880-93a3-7b23e129814e',
+  pullRequestId: '123',
+  parentCommentId: '456',
+  reply: 'Thanks for the feedback! I will address this in the next iteration.'
+});
+
+console.log('Reply ID:', result.commentId);
+console.log('Thread ID:', result.threadId);
+```
+
+### Code Review Analysis Tools
+
+#### `analyze_code_review_comments`
+Analyzes code review comments in an Azure DevOps pull request and generates actionable fix suggestions.
+
+**Parameters:**
+- `pullRequestUrl` (required): The full Azure DevOps pull request URL
+
+**Example Usage:**
+```javascript
+// Analyze code review comments
+const analysis = await analyze_code_review_comments({
+  pullRequestUrl: 'https://dev.azure.com/org/project/_git/repo/pullrequest/123'
+});
+
+console.log('Fix suggestions:', analysis.fixSuggestions);
+console.log('Priority items:', analysis.summary.priorityItems);
+```
+
+**Response Structure:**
+```json
+{
+  "pullRequest": {
+    "id": 123,
+    "title": "Feature implementation",
+    "url": "https://dev.azure.com/org/project/_git/repo/pullrequest/123",
+    "repository": "repo-name",
+    "status": "Active"
+  },
+  "analysis": {
+    "totalThreads": 5,
+    "activeThreads": 3,
+    "actionableComments": 7,
+    "commentsByFile": {
+      "src/component.js": [/* comments */],
+      "src/utils.js": [/* comments */]
+    },
+    "commonIssues": {
+      "Code Quality": 3,
+      "Bug": 2,
+      "Security": 1
+    }
+  },
+  "fixSuggestions": [
+    {
+      "commentId": 456,
+      "threadId": 789,
+      "filePath": "src/component.js",
+      "line": 42,
+      "issueType": "Code Quality",
+      "severity": "Medium",
+      "originalComment": "This function is too complex...",
+      "author": "John Doe",
+      "suggestion": "Consider refactoring this code to improve readability...",
+      "actionItems": [
+        "Review and understand the feedback",
+        "Implement the suggested changes",
+        "Test the changes thoroughly"
+      ],
+      "estimatedEffort": "Medium (2-4 hours)",
+      "resources": [
+        {
+          "title": "Clean Code Principles",
+          "url": "https://clean-code-developer.com/"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "overview": "Found 7 actionable comments across 2 files",
+    "severityBreakdown": {
+      "High": 1,
+      "Medium": 4,
+      "Low": 2
+    },
+    "mostCommonIssue": "Code Quality",
+    "estimatedTotalTime": "8.5 hours",
+    "priorityItems": [
+      "Security in src/auth.js (line 15)"
+    ],
+    "recommendations": [
+      "Address 1 high-priority issues first",
+      "Security issues require immediate attention (1 found)",
+      "Run automated tests after each fix to ensure no regressions"
+    ]
+  }
+}
+```
+
+**Features:**
+- **Automatic URL parsing**: Extracts organization, project, repository, and PR ID from Azure DevOps URLs
+- **Smart comment analysis**: Identifies actionable comments vs. informational/positive feedback
+- **Issue categorization**: Categorizes issues into types (Bug, Security, Performance, Code Quality, etc.)
+- **Severity assessment**: Evaluates severity levels (High, Medium, Low) based on content analysis
+- **Fix suggestions**: Generates specific, actionable suggestions for each comment
+- **Effort estimation**: Provides time estimates for addressing each issue
+- **Priority ranking**: Identifies high-priority items that need immediate attention
+- **Resource recommendations**: Suggests relevant learning resources for each issue type
+- **Comprehensive reporting**: Provides detailed analysis with actionable insights
+
+**Use Cases:**
+- **Automated code review assistance**: Help developers understand and prioritize reviewer feedback
+- **Technical debt tracking**: Identify and categorize technical debt from code reviews
+- **Team productivity**: Streamline the code review process with structured feedback
+- **Quality assurance**: Ensure important issues are addressed before merging
+- **Developer coaching**: Provide learning resources and best practices for common issues
+
+**Example Request:**
+```json
+{
+  "pullRequestUrl": "https://dev.azure.com/d2odevops/PMI/_git/PMI/pullrequest/10710"
+}
+```
+
+This tool is perfect for the user's request: "Please help to fix all code review comments in this PR@https://dev.azure.com/d2odevops/PMI/_git/PMI/pullrequest/10710"
 
 ### System Tools
 

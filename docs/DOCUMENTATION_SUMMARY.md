@@ -1,6 +1,21 @@
 # Documentation Summary
 
-I have enhanced the JavaScript files in your Azure DevOps MCP project with comprehensive documentation. Here's what has been added:
+I have enhanced the JavaScript files in your Azure DevOps MCP project with comprehensive documentation and work item comment functionality. Here's what has been added:
+
+## Latest Enhancements (June 2025)
+
+### 🆕 **Work Item Comment Support**
+- **Added**: Complete work item comment management functionality
+- **Features**: Add, retrieve, update, and delete comments on any work item type (bugs, user stories, tasks, etc.)
+- **Tools**: Four new MCP tools for comprehensive comment operations
+- **API Integration**: Uses Azure DevOps Work Item Comments API v7.1-preview.3
+- **Testing**: Full test suite coverage for all comment operations
+
+### 🔧 **Technical Implementation**
+- **WorkItemManager**: New methods for `addWorkItemComment()`, `getWorkItemComments()`, `updateWorkItemComment()`, `deleteWorkItemComment()`
+- **Server Integration**: Added `add_work_item_comment`, `get_work_item_comments`, `update_work_item_comment`, `delete_work_item_comment` tools
+- **Documentation**: Comprehensive examples and parameter descriptions for all comment tools
+- **Error Handling**: Robust error handling with detailed success/failure responses
 
 ## Documentation Enhancements Applied
 
@@ -57,6 +72,12 @@ I have enhanced the JavaScript files in your Azure DevOps MCP project with compr
   - Supported operations (CRUD, linking, search)
   - Usage examples for user stories and tasks
   - Constructor and initialization documentation
+- **Enhanced**: New methods and documentation for work item comment management:
+  - `addWorkItemComment()` - Add a comment to a work item
+  - `getWorkItemComments()` - Retrieve comments for a work item
+  - `updateWorkItemComment()` - Update an existing comment
+  - `deleteWorkItemComment()` - Delete a comment from a work item
+- **Improved**: Error handling and response documentation for comment operations
 
 ### 📁 **Test Files**
 
@@ -66,6 +87,8 @@ I have enhanced the JavaScript files in your Azure DevOps MCP project with compr
   - Mock object usage
   - Expected test outcomes
   - Running instructions
+- **Enhanced**: New tests for work item comment functionality
+- **Improved**: Test organization and setup instructions
 
 ## 📋 **Documentation Standards Applied**
 
