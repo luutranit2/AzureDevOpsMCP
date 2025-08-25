@@ -8,10 +8,10 @@
  * Protocol specification and offers tools for work item management, pull request operations,
  * test case handling, and system connectivity testing.
  * 
- * The server supports 15 different tools covering:
+ * The server supports 16 different tools covering:
  * - Work Item Operations: Create, update, search, and link user stories and tasks
  * - Test Case Management: Create, update, and associate test cases with user stories
- * - Pull Request Operations: Retrieve, comment on, and analyze pull requests
+ * - Pull Request Operations: Retrieve, comment on, reply to comments, and analyze pull requests
  * - System Operations: Test connectivity and validate configuration
  * 
  * @version 1.0.0
@@ -41,11 +41,16 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
-import { AzureDevOpsIntegration } from '../index.js';
+import AzureDevOpsIntegration from '../index.js';
+import { CodeReviewManager } from './modules/codeReviewManager.js';
+import { configureMCPLogging } from './utils/logger.js';
 import dotenv from 'dotenv';
 
 // Load environment variables from .env file
 dotenv.config();
+
+// Configure logging for MCP mode to prevent popups in Claude Desktop
+configureMCPLogging();
 
 /**
  * Azure DevOps MCP Server Class
@@ -77,6 +82,7 @@ class AzureDevOpsMCPServer {
     );
     
     this.azureDevOps = null;
+    this.codeReviewManager = null;
     this.setupToolHandlers();
   }
   /**
@@ -90,7 +96,7 @@ class AzureDevOpsMCPServer {
    * Tools are organized into categories:
    * - Work Item Management (6 tools)
    * - Test Case Management (3 tools) 
-   * - Pull Request Operations (3 tools)
+   * - Pull Request Operations (4 tools)
    * - System Operations (1 tool)
    */
   setupToolHandlers() {
@@ -138,7 +144,7 @@ class AzureDevOpsMCPServer {
             inputSchema: {
               type: 'object',
               properties: {                workItemId: {
-                  type: ['number', 'string'],
+                  type: 'string',
                   description: 'The ID of the user story to update',
                 },
                 title: {
@@ -175,7 +181,7 @@ class AzureDevOpsMCPServer {
             inputSchema: {
               type: 'object',
               properties: {                workItemId: {
-                  type: ['number', 'string'],
+                  type: 'string',
                   description: 'The ID of the user story to retrieve',
                 },
               },
@@ -188,11 +194,11 @@ class AzureDevOpsMCPServer {
             inputSchema: {
               type: 'object',
               properties: {                userStoryId: {
-                  type: ['number', 'string'],
+                  type: 'string',
                   description: 'The ID of the user story',
                 },
                 featureId: {
-                  type: ['number', 'string'],
+                  type: 'string',
                   description: 'The ID of the feature to link to',
                 },
               },
@@ -211,6 +217,148 @@ class AzureDevOpsMCPServer {
                 },
               },
               required: ['wiql'],
+            },          },
+          {
+            name: 'create_bug',
+            description: 'Create a new bug in Azure DevOps',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                title: {
+                  type: 'string',
+                  description: 'The title of the bug',
+                },
+                description: {
+                  type: 'string',
+                  description: 'The description of the bug',
+                },
+                assignedTo: {
+                  type: 'string',
+                  description: 'Email or display name of the person to assign the bug to',
+                },
+                priority: {
+                  type: 'number',
+                  description: 'Priority level (1-4)',
+                },
+                severity: {
+                  type: 'number',
+                  description: 'Severity level (1-4)',
+                },
+                stepsToReproduce: {
+                  type: 'string',
+                  description: 'Steps to reproduce the bug',
+                },
+                systemInfo: {
+                  type: 'string',
+                  description: 'System information where the bug occurs',
+                },
+                acceptanceCriteria: {
+                  type: 'string',
+                  description: 'Acceptance criteria for fixing the bug',
+                },
+                foundInBuild: {
+                  type: 'string',
+                  description: 'Build number where the bug was found',
+                },
+                activity: {
+                  type: 'string',
+                  description: 'Activity type (Development, Testing, Design, etc.)',
+                },
+                parentId: {
+                  type: 'string',
+                  description: 'The ID of the parent work item (user story, feature, etc.)',
+                },
+                iterationPath: {
+                  type: 'string',
+                  description: 'Iteration path for the bug',
+                },
+                areaPath: {
+                  type: 'string',
+                  description: 'Area path for the bug',
+                },
+                tags: {
+                  type: 'string',
+                  description: 'Comma-separated tags',
+                },
+              },
+              required: ['title', 'description'],            },
+          },
+          {
+            name: 'update_bug',
+            description: 'Update an existing bug in Azure DevOps',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                id: {
+                  type: 'string',
+                  description: 'The ID of the bug to update',
+                },
+                title: {
+                  type: 'string',
+                  description: 'The updated title of the bug',
+                },
+                description: {
+                  type: 'string',
+                  description: 'The updated description of the bug',
+                },
+                assignedTo: {
+                  type: 'string',
+                  description: 'Email or display name of the person to assign the bug to',
+                },
+                priority: {
+                  type: 'number',
+                  description: 'Priority level (1-4)',
+                },
+                severity: {
+                  type: 'number',
+                  description: 'Severity level (1-4)',
+                },
+                stepsToReproduce: {
+                  type: 'string',
+                  description: 'Steps to reproduce the bug',
+                },
+                systemInfo: {
+                  type: 'string',
+                  description: 'System information where the bug occurs',
+                },
+                acceptanceCriteria: {
+                  type: 'string',
+                  description: 'Acceptance criteria for fixing the bug',
+                },
+                foundInBuild: {
+                  type: 'string',
+                  description: 'Build number where the bug was found',
+                },
+                activity: {
+                  type: 'string',
+                  description: 'Activity type (Development, Testing, Design, etc.)',
+                },
+                parentId: {
+                  type: 'string',
+                  description: 'The ID of the parent work item (user story, feature, etc.)',
+                },
+                iterationPath: {
+                  type: 'string',
+                  description: 'Iteration path for the bug',
+                },
+                areaPath: {
+                  type: 'string',
+                  description: 'Area path for the bug',
+                },
+                tags: {
+                  type: 'string',
+                  description: 'Comma-separated tags',
+                },
+                state: {
+                  type: 'string',
+                  description: 'State of the bug (New, Active, Resolved, Closed)',
+                },
+                reason: {
+                  type: 'string',
+                  description: 'Reason for the state change',
+                },
+              },
+              required: ['id'],
             },
           },
           {
@@ -264,7 +412,7 @@ class AzureDevOpsMCPServer {
               type: 'object',
               properties: {
                 testCaseId: {
-                  type: ['number', 'string'],
+                  type: 'string',
                   description: 'The ID of the test case to update',
                 },
                 title: {
@@ -319,11 +467,11 @@ class AzureDevOpsMCPServer {
             inputSchema: {
               type: 'object',
               properties: {                testCaseId: {
-                  type: ['number', 'string'],
+                  type: 'string',
                   description: 'The ID of the test case',
                 },
                 userStoryId: {
-                  type: ['number', 'string'],
+                  type: 'string',
                   description: 'The ID of the user story',
                 },
               },
@@ -336,7 +484,7 @@ class AzureDevOpsMCPServer {
             inputSchema: {
               type: 'object',
               properties: {                testCaseId: {
-                  type: ['number', 'string'],
+                  type: 'string',
                   description: 'The ID of the test case to retrieve',
                 },
               },
@@ -353,7 +501,7 @@ class AzureDevOpsMCPServer {
                   description: 'The ID of the repository',
                 },
                 pullRequestId: {
-                  type: ['number', 'string'],
+                  type: 'string',
                   description: 'The ID of the pull request',
                 },
                 includeDetails: {
@@ -375,7 +523,7 @@ class AzureDevOpsMCPServer {
                   description: 'The ID of the repository',
                 },
                 pullRequestId: {
-                  type: ['number', 'string'],
+                  type: 'string',
                   description: 'The ID of the pull request',
                 },
               },
@@ -392,7 +540,7 @@ class AzureDevOpsMCPServer {
                   type: 'string',
                   description: 'The ID of the repository',
                 },                pullRequestId: {
-                  type: ['number', 'string'],
+                  type: 'string',
                   description: 'The ID of the pull request',
                 },
                 filePath: {
@@ -411,6 +559,32 @@ class AzureDevOpsMCPServer {
               required: ['repositoryId', 'pullRequestId', 'filePath', 'comment'],
             },          },
           {
+            name: 'reply_to_pull_request_comment',
+            description: 'Reply to an existing comment in a pull request thread',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                repositoryId: {
+                  type: 'string',
+                  description: 'The ID of the repository',
+                },
+                pullRequestId: {
+                  type: 'string',
+                  description: 'The ID of the pull request',
+                },
+                parentCommentId: {
+                  type: 'string',
+                  description: 'The ID of the comment to reply to',
+                },
+                reply: {
+                  type: 'string',
+                  description: 'The reply text',
+                },
+              },
+              required: ['repositoryId', 'pullRequestId', 'parentCommentId', 'reply'],
+            },
+          },
+          {
             name: 'create_task',
             description: 'Create a new task in Azure DevOps',
             inputSchema: {
@@ -425,7 +599,7 @@ class AzureDevOpsMCPServer {
                   description: 'The description of the task',
                 },
                 parentId: {
-                  type: ['number', 'string'],
+                  type: 'string',
                   description: 'The ID of the parent work item (user story, feature, etc.)',
                 },
                 assignedTo: {
@@ -447,13 +621,142 @@ class AzureDevOpsMCPServer {
               },
               required: ['title', 'description'],
             },
-          },
-          {
+          },          {
             name: 'test_connection',
             description: 'Test the connection to Azure DevOps',
             inputSchema: {
               type: 'object',
               properties: {},
+            },
+          },
+          {
+            name: 'add_work_item_comment',
+            description: 'Add a comment to a work item (bug, user story, task, etc.)',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                workItemId: {
+                  type: 'string',
+                  description: 'The ID of the work item to comment on',
+                },
+                comment: {
+                  type: 'string',
+                  description: 'The comment text to add',
+                },
+              },
+              required: ['workItemId', 'comment'],
+            },
+          },
+          {
+            name: 'get_work_item_comments',
+            description: 'Get comments for a work item',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                workItemId: {
+                  type: 'string',
+                  description: 'The ID of the work item to get comments for',
+                },
+                top: {
+                  type: 'number',
+                  description: 'Maximum number of comments to retrieve',
+                },
+                includeDeleted: {
+                  type: 'boolean',
+                  description: 'Whether to include deleted comments',
+                },
+                expand: {
+                  type: 'string',
+                  description: 'What additional data to include (reactions, mentions, etc.)',
+                },
+              },
+              required: ['workItemId'],
+            },
+          },
+          {
+            name: 'update_work_item_comment',
+            description: 'Update an existing work item comment',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                workItemId: {
+                  type: 'string',
+                  description: 'The ID of the work item',
+                },
+                commentId: {
+                  type: 'string',
+                  description: 'The ID of the comment to update',
+                },
+                text: {
+                  type: 'string',
+                  description: 'The new comment text',
+                },
+              },
+              required: ['workItemId', 'commentId', 'text'],
+            },
+          },
+          {
+            name: 'delete_work_item_comment',
+            description: 'Delete a work item comment',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                workItemId: {
+                  type: 'string',
+                  description: 'The ID of the work item',
+                },
+                commentId: {
+                  type: 'string',
+                  description: 'The ID of the comment to delete',
+                },
+              },
+              required: ['workItemId', 'commentId'],
+            },
+          },
+          {
+            name: 'analyze_code_review_comments',
+            description: 'Analyze code review comments in a pull request and generate fix suggestions',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                pullRequestUrl: {
+                  type: 'string',
+                  description: 'The full Azure DevOps pull request URL (e.g., https://dev.azure.com/org/project/_git/repo/pullrequest/123)',
+                },
+              },
+              required: ['pullRequestUrl'],
+            },
+          },
+          {
+            name: 'delete_test_case',
+            description: 'Delete a test case permanently from Azure DevOps',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                testCaseId: {
+                  type: 'string',
+                  description: 'The ID of the test case to delete',
+                },
+              },
+              required: ['testCaseId'],
+            },
+          },
+          {
+            name: 'remove_test_case_from_user_story',
+            description: 'Remove the association between a test case and a user story',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                testCaseId: {
+                  type: 'string',
+                  description: 'The ID of the test case to disassociate',
+                },
+                userStoryId: {
+                  type: 'string',
+                  description: 'The ID of the user story to disassociate from',
+                },
+              },
+              required: ['testCaseId', 'userStoryId'],
             },
           },
         ],
@@ -477,7 +780,10 @@ class AzureDevOpsMCPServer {
             return await this.getUserStory(args);
           case 'link_user_story_to_feature':
             return await this.linkUserStoryToFeature(args);          case 'search_work_items':
-            return await this.searchWorkItems(args);
+            return await this.searchWorkItems(args);          case 'create_bug':
+            return await this.createBug(args);
+          case 'update_bug':
+            return await this.updateBug(args);
           case 'create_task':
             return await this.createTask(args);
           case 'create_test_case':
@@ -494,8 +800,24 @@ class AzureDevOpsMCPServer {
             return await this.getPullRequestComments(args);
           case 'add_pull_request_comment':
             return await this.addPullRequestComment(args);
+          case 'reply_to_pull_request_comment':
+            return await this.replyToPullRequestComment(args);
           case 'test_connection':
             return await this.testConnection(args);
+          case 'add_work_item_comment':
+            return await this.addWorkItemComment(args);
+          case 'get_work_item_comments':
+            return await this.getWorkItemComments(args);
+          case 'update_work_item_comment':
+            return await this.updateWorkItemComment(args);
+          case 'delete_work_item_comment':
+            return await this.deleteWorkItemComment(args);
+          case 'analyze_code_review_comments':
+            return await this.analyzeCodeReviewComments(args);
+          case 'delete_test_case':
+            return await this.deleteTestCase(args);
+          case 'remove_test_case_from_user_story':
+            return await this.removeTestCaseFromUserStory(args);
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,
@@ -503,12 +825,41 @@ class AzureDevOpsMCPServer {
             );
         }
       } catch (error) {
+        console.error(`Error calling tool ${name}:`, error);
         throw new McpError(
           ErrorCode.InternalError,
-          `Tool execution failed: ${error.message}`
+          `Error calling tool ${name}: ${error.message}`
         );
       }
     });
+  }
+
+  /**
+   * Validates and converts a parameter that can be either a number or string to the appropriate type
+   * @param {*} value - The value to validate and convert
+   * @param {string} paramName - The name of the parameter for error messages
+   * @param {string} expectedType - The expected type ('number' or 'string')
+   * @returns {number|string} - The validated and converted value
+   * @throws {Error} - If the value is invalid
+   */
+  validateParameter(value, paramName, expectedType = 'number') {
+    if (value === null || value === undefined) {
+      throw new Error(`Parameter '${paramName}' is required`);
+    }
+
+    if (expectedType === 'number') {
+      // Convert to number if it's a string that represents a number
+      const numericValue = typeof value === 'string' ? parseInt(value, 10) : value;
+      if (isNaN(numericValue) || !Number.isInteger(numericValue)) {
+        throw new Error(`Parameter '${paramName}' must be a valid integer, got: ${value}`);
+      }
+      return numericValue;
+    } else if (expectedType === 'string') {
+      // Convert to string if it's a number
+      return String(value);
+    }
+
+    throw new Error(`Unsupported expected type: ${expectedType}`);
   }
 
   async ensureInitialized() {
@@ -529,6 +880,10 @@ class AzureDevOpsMCPServer {
       if (!success) {
         throw new Error('Failed to initialize Azure DevOps connection');
       }
+
+      // Initialize code review manager
+      this.codeReviewManager = new CodeReviewManager(this.azureDevOps.webApi, config.project);
+      await this.codeReviewManager.initialize();
     }
   }
   async createUserStory(args) {
@@ -564,6 +919,9 @@ class AzureDevOpsMCPServer {
   }  async updateUserStory(args) {
     const { workItemId, ...updates } = args;
     
+    // Validate parameters
+    const validatedWorkItemId = this.validateParameter(workItemId, 'workItemId', 'number');
+    
     // Convert newlines to HTML <br> tags for proper rendering in Azure DevOps
     if (updates.description) {
       updates.description = updates.description.replace(/\n/g, '<br>');
@@ -573,7 +931,7 @@ class AzureDevOpsMCPServer {
     }
     
     // Pass the updates with HTML formatting to the work item manager
-    const updatedStory = await this.azureDevOps.updateUserStory(workItemId, updates);
+    const updatedStory = await this.azureDevOps.updateUserStory(validatedWorkItemId, updates);
     
     return {
       content: [
@@ -586,7 +944,11 @@ class AzureDevOpsMCPServer {
   }
   async getUserStory(args) {
     const { workItemId } = args;
-    const userStory = await this.azureDevOps.getWorkItem(workItemId);
+    
+    // Validate parameters
+    const validatedWorkItemId = this.validateParameter(workItemId, 'workItemId', 'number');
+    
+    const userStory = await this.azureDevOps.getWorkItem(validatedWorkItemId);
     
     const details = `
 User Story #${userStory.id}
@@ -616,15 +978,20 @@ URL: ${userStory.url}
 
   async linkUserStoryToFeature(args) {
     const { userStoryId, featureId } = args;
-    await this.azureDevOps.linkUserStoryToFeature(userStoryId, featureId);
+    
+    // Validate parameters
+    const validatedUserStoryId = this.validateParameter(userStoryId, 'userStoryId', 'number');
+    const validatedFeatureId = this.validateParameter(featureId, 'featureId', 'number');
+    
+    await this.azureDevOps.linkUserStoryToFeature(validatedUserStoryId, validatedFeatureId);
     
     return {
-      content: [
-        {
-          type: 'text',
-          text: `Successfully linked user story #${userStoryId} to feature #${featureId}`,
-        },
-      ],
+              content: [
+          {
+            type: 'text',
+            text: `Successfully linked user story #${validatedUserStoryId} to feature #${validatedFeatureId}`,
+          },
+        ],
     };
   }
 
@@ -648,21 +1015,29 @@ URL: ${userStory.url}
   async createTask(args) {
     const { title, description, parentId, assignedTo, originalEstimate, activity, priority } = args;
     
+    // Validate required parameters
+    if (!title || typeof title !== 'string') {
+      throw new Error('Parameter \'title\' is required and must be a string');
+    }
+    if (!description || typeof description !== 'string') {
+      throw new Error('Parameter \'description\' is required and must be a string');
+    }
+    
     const options = {};
-    if (parentId) {
-      options.parentId = parentId;
+    if (parentId !== undefined && parentId !== null) {
+      options.parentId = this.validateParameter(parentId, 'parentId', 'number');
     }
     if (assignedTo) {
       options.assignedTo = assignedTo;
     }
-    if (originalEstimate) {
-      options.originalEstimate = originalEstimate;
+    if (originalEstimate !== undefined && originalEstimate !== null) {
+      options.originalEstimate = this.validateParameter(originalEstimate, 'originalEstimate', 'number');
     }
-    if (activity) {
+    if (activity && typeof activity === 'string') {
       options.activity = activity;
     }
-    if (priority) {
-      options.priority = priority;
+    if (priority !== undefined && priority !== null) {
+      options.priority = this.validateParameter(priority, 'priority', 'number');
     }
 
     const task = await this.azureDevOps.createTask(title, description, options);
@@ -710,6 +1085,9 @@ URL: ${userStory.url}
   async updateTestCase(args) {
     const { testCaseId, title, description, steps, priority, automationStatus, assignedTo, state } = args;
     
+    // Validate parameters
+    const validatedTestCaseId = this.validateParameter(testCaseId, 'testCaseId', 'number');
+    
     const updates = {};
     
     // Convert newlines to HTML <br> tags for proper rendering in Azure DevOps
@@ -739,7 +1117,7 @@ URL: ${userStory.url}
       updates.state = state;
     }
 
-    const updatedTestCase = await this.azureDevOps.updateTestCase(testCaseId, updates);
+    const updatedTestCase = await this.azureDevOps.updateTestCase(validatedTestCaseId, updates);
     
     return {
       content: [
@@ -753,21 +1131,30 @@ URL: ${userStory.url}
 
   async associateTestCaseWithUserStory(args) {
     const { testCaseId, userStoryId } = args;
-    await this.azureDevOps.associateTestCaseWithUserStory(testCaseId, userStoryId);
+    
+    // Validate parameters
+    const validatedTestCaseId = this.validateParameter(testCaseId, 'testCaseId', 'number');
+    const validatedUserStoryId = this.validateParameter(userStoryId, 'userStoryId', 'number');
+    
+    await this.azureDevOps.associateTestCaseWithUserStory(validatedTestCaseId, validatedUserStoryId);
     
     return {
-      content: [
-        {
-          type: 'text',
-          text: `Successfully associated test case #${testCaseId} with user story #${userStoryId}`,
-        },
-      ],
+              content: [
+          {
+            type: 'text',
+            text: `Successfully associated test case #${validatedTestCaseId} with user story #${validatedUserStoryId}`,
+          },
+        ],
     };
   }
 
   async getTestCase(args) {
     const { testCaseId } = args;
-    const testCase = await this.azureDevOps.getTestCase(testCaseId);
+    
+    // Validate parameters
+    const validatedTestCaseId = this.validateParameter(testCaseId, 'testCaseId', 'number');
+    
+    const testCase = await this.azureDevOps.getTestCase(validatedTestCaseId);
       const details = `
 Test Case #${testCase.id}
 Title: ${testCase.title}
@@ -791,7 +1178,15 @@ Modified: ${testCase.changedDate}
   }
   async getPullRequest(args) {
     const { repositoryId, pullRequestId, includeDetails = true } = args;
-    const pr = await this.azureDevOps.getPullRequest(repositoryId, pullRequestId, includeDetails);
+    
+    // Validate parameters
+    const validatedPullRequestId = this.validateParameter(pullRequestId, 'pullRequestId', 'number');
+    
+    if (!repositoryId || typeof repositoryId !== 'string') {
+      throw new Error('Parameter \'repositoryId\' is required and must be a string');
+    }
+    
+    const pr = await this.azureDevOps.getPullRequest(repositoryId, validatedPullRequestId, includeDetails);
     
     const details = `
 Pull Request #${pr.id}
@@ -815,7 +1210,15 @@ Description: ${pr.description || 'No description'}
 
   async getPullRequestComments(args) {
     const { repositoryId, pullRequestId } = args;
-    const comments = await this.azureDevOps.getPullRequestComments(repositoryId, pullRequestId);
+    
+    // Validate parameters
+    const validatedPullRequestId = this.validateParameter(pullRequestId, 'pullRequestId', 'number');
+    
+    if (!repositoryId || typeof repositoryId !== 'string') {
+      throw new Error('Parameter \'repositoryId\' is required and must be a string');
+    }
+    
+    const comments = await this.azureDevOps.getPullRequestComments(repositoryId, validatedPullRequestId);
     
     let resultText = `Found ${comments.length} comment threads:\n\n`;
     comments.forEach((thread, index) => {
@@ -838,13 +1241,62 @@ Description: ${pr.description || 'No description'}
 
   async addPullRequestComment(args) {
     const { repositoryId, pullRequestId, filePath, comment, line } = args;
-    const result = await this.azureDevOps.addFileComment(repositoryId, pullRequestId, filePath, comment, line);
+    
+    // Validate parameters
+    const validatedPullRequestId = this.validateParameter(pullRequestId, 'pullRequestId', 'number');
+    
+    if (!repositoryId || typeof repositoryId !== 'string') {
+      throw new Error('Parameter \'repositoryId\' is required and must be a string');
+    }
+    
+    if (!filePath || typeof filePath !== 'string') {
+      throw new Error('Parameter \'filePath\' is required and must be a string');
+    }
+    
+    if (!comment || typeof comment !== 'string') {
+      throw new Error('Parameter \'comment\' is required and must be a string');
+    }
+    
+    // Line parameter is optional, but if provided should be a number
+    let validatedLine = null;
+    if (line !== undefined && line !== null) {
+      validatedLine = this.validateParameter(line, 'line', 'number');
+    }
+    
+    const result = await this.azureDevOps.addFileComment(repositoryId, validatedPullRequestId, filePath, comment, validatedLine);
     
     return {
       content: [
         {
           type: 'text',
-          text: `Successfully added comment to file ${filePath} in pull request #${pullRequestId}`,
+          text: `Successfully added comment to file ${filePath} in pull request #${validatedPullRequestId}`,
+        },
+      ],
+    };
+  }
+
+  async replyToPullRequestComment(args) {
+    const { repositoryId, pullRequestId, parentCommentId, reply } = args;
+    
+    // Validate parameters
+    const validatedPullRequestId = this.validateParameter(pullRequestId, 'pullRequestId', 'number');
+    const validatedParentCommentId = this.validateParameter(parentCommentId, 'parentCommentId', 'number');
+    
+    if (!repositoryId || typeof repositoryId !== 'string') {
+      throw new Error('Parameter \'repositoryId\' is required and must be a string');
+    }
+    
+    if (!reply || typeof reply !== 'string') {
+      throw new Error('Parameter \'reply\' is required and must be a string');
+    }
+    
+    const result = await this.azureDevOps.replyToComment(repositoryId, validatedPullRequestId, validatedParentCommentId, reply);
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Successfully replied to comment ${validatedParentCommentId} in pull request #${validatedPullRequestId}. Reply ID: ${result.commentId}`,
         },
       ],
     };
@@ -864,10 +1316,217 @@ Description: ${pr.description || 'No description'}
     };
   }
 
+  async addWorkItemComment(args) {
+    const { workItemId, comment } = args;
+    
+    // Validate parameters
+    const validatedWorkItemId = this.validateParameter(workItemId, 'workItemId', 'number');
+    
+    if (!comment || typeof comment !== 'string') {
+      throw new Error('Parameter \'comment\' is required and must be a string');
+    }
+    
+    const result = await this.azureDevOps.addWorkItemComment(validatedWorkItemId, comment);
+    
+    if (result.success) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully added comment to work item #${validatedWorkItemId}`,
+          },
+        ],
+      };
+    } else {
+      throw new Error(result.error);
+    }
+  }
+
+  async getWorkItemComments(args) {
+    const { workItemId, top, includeDeleted, expand } = args;
+    
+    // Validate parameters
+    const validatedWorkItemId = this.validateParameter(workItemId, 'workItemId', 'number');
+    
+    const options = {};
+    
+    if (top !== undefined && top !== null) {
+      options.top = this.validateParameter(top, 'top', 'number');
+    }
+    if (includeDeleted !== undefined) {
+      options.includeDeleted = Boolean(includeDeleted);
+    }
+    if (expand !== undefined && expand !== null) {
+      if (typeof expand !== 'string') {
+        throw new Error('Parameter \'expand\' must be a string');
+      }
+      options.expand = expand;
+    }
+    
+    const result = await this.azureDevOps.getWorkItemComments(validatedWorkItemId, options);
+    
+          if (result.success) {
+        const comments = result.comments.comments || [];
+        let responseText = `Work Item #${validatedWorkItemId} Comments (${result.count} total):\n\n`;
+      
+      if (comments.length === 0) {
+        responseText += 'No comments found.';
+      } else {
+        comments.forEach((comment, index) => {
+          responseText += `Comment #${comment.id} by ${comment.createdBy.displayName}\n`;
+          responseText += `Created: ${new Date(comment.createdDate).toLocaleString()}\n`;
+          responseText += `${comment.text}\n`;
+          if (index < comments.length - 1) responseText += '\n---\n\n';
+        });
+      }
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: responseText,
+          },
+        ],
+      };
+    } else {
+      throw new Error(result.error);
+    }
+  }
+
+  async updateWorkItemComment(args) {
+    const { workItemId, commentId, text } = args;
+    
+    // Validate parameters
+    const validatedWorkItemId = this.validateParameter(workItemId, 'workItemId', 'number');
+    const validatedCommentId = this.validateParameter(commentId, 'commentId', 'number');
+    
+    if (!text || typeof text !== 'string') {
+      throw new Error('Parameter \'text\' is required and must be a string');
+    }
+    
+    const result = await this.azureDevOps.updateWorkItemComment(validatedWorkItemId, validatedCommentId, text);
+    
+    if (result.success) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully updated comment #${validatedCommentId} on work item #${validatedWorkItemId}`,
+          },
+        ],
+      };
+    } else {
+      throw new Error(result.error);
+    }
+  }
+
+  async deleteWorkItemComment(args) {
+    const { workItemId, commentId } = args;
+    
+    // Validate parameters
+    const validatedWorkItemId = this.validateParameter(workItemId, 'workItemId', 'number');
+    const validatedCommentId = this.validateParameter(commentId, 'commentId', 'number');
+    
+    const result = await this.azureDevOps.deleteWorkItemComment(validatedWorkItemId, validatedCommentId);
+    
+    if (result.success) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully deleted comment #${validatedCommentId} from work item #${validatedWorkItemId}`,
+          },
+        ],
+      };
+    } else {
+      throw new Error(result.error);
+    }
+  }
+
+  async analyzeCodeReviewComments(args) {
+    try {
+      const { pullRequestUrl } = args;
+      
+      // Validate parameters
+      if (!pullRequestUrl || typeof pullRequestUrl !== 'string') {
+        throw new Error('Parameter \'pullRequestUrl\' is required and must be a string');
+      }
+      
+      // Validate URL format
+      if (!pullRequestUrl.includes('dev.azure.com') || !pullRequestUrl.includes('pullrequest')) {
+        throw new Error('pullRequestUrl must be a valid Azure DevOps pull request URL (e.g., https://dev.azure.com/org/project/_git/repo/pullrequest/123)');
+      }
+
+              // Progress logging suppressed for MCP mode
+
+      const analysis = await this.codeReviewManager.analyzeCodeReviewComments(pullRequestUrl);
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(analysis, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      console.error(`❌ Failed to analyze code review comments:`, error.message);
+      throw new McpError(
+        ErrorCode.InternalError,
+        `Failed to analyze code review comments: ${error.message}`
+      );
+    }
+  }
+
+  async deleteTestCase(args) {
+    const { testCaseId } = args;
+    
+    // Validate parameters
+    const validatedTestCaseId = this.validateParameter(testCaseId, 'testCaseId', 'number');
+    
+    const result = await this.azureDevOps.deleteTestCase(validatedTestCaseId);
+    
+    if (result.success) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully deleted test case #${validatedTestCaseId}: "${result.title}"`,
+          },
+        ],
+      };
+    } else {
+      throw new Error(result.error);
+    }
+  }
+
+  async removeTestCaseFromUserStory(args) {
+    const { testCaseId, userStoryId } = args;
+    
+    // Validate parameters
+    const validatedTestCaseId = this.validateParameter(testCaseId, 'testCaseId', 'number');
+    const validatedUserStoryId = this.validateParameter(userStoryId, 'userStoryId', 'number');
+    
+    const result = await this.azureDevOps.removeTestCaseFromUserStory(validatedTestCaseId, validatedUserStoryId);
+    
+    if (result.success) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully removed association between test case #${validatedTestCaseId} "${result.testCaseTitle}" and user story #${validatedUserStoryId} "${result.userStoryTitle}"`,
+          },
+        ],
+      };
+    } else {
+      throw new Error(result.error);
+    }
+  }
+
   async run() {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.error('Azure DevOps MCP server running on stdio');
+    // Server status logging suppressed for MCP mode to prevent popups
   }
 }
 

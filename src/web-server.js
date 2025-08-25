@@ -41,7 +41,7 @@
 
 import express from 'express';
 import cors from 'cors';
-import { AzureDevOpsIntegration } from '../index.js';
+import AzureDevOpsIntegration from '../index.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';

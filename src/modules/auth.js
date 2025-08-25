@@ -170,7 +170,7 @@ export class AzureDevOpsAuth {
      */
     async initialize() {
         try {
-            console.log(`🔄 Initializing connection to ${this.organizationUrl}...`);
+            // Connection initialization logging suppressed for MCP mode
 
             this.authHandler = this.createAuthHandler();
             
@@ -187,7 +187,7 @@ export class AzureDevOpsAuth {
                 throw new Error('Failed to establish connection to Azure DevOps');
             }
 
-            console.log('✅ Successfully initialized Azure DevOps connection');
+            // Success logging suppressed for MCP mode
             return true;
         } catch (error) {
             const errorMessage = extractErrorMessage(error);
@@ -228,7 +228,7 @@ export class AzureDevOpsAuth {
 
             return this.connectionInfo;
         } catch (error) {
-            console.warn('Could not retrieve connection info:', extractErrorMessage(error));
+            // Connection info warning suppressed for MCP mode
             return null;
         }
     }
@@ -242,7 +242,7 @@ export class AzureDevOpsAuth {
                 await this.initialize();
             }
 
-            console.log('🔄 Testing Azure DevOps connection...');
+            // Connection test logging suppressed for MCP mode
 
             // Test 1: Basic API access
             const coreApi = await this.webApi.getCoreApi();
@@ -255,11 +255,7 @@ export class AzureDevOpsAuth {
             // Test 3: Get connection info
             await this.getConnectionInfo();
 
-            console.log(`✅ Connection successful! Found ${projects.length} projects.`);
-            
-            if (projects.length > 0) {
-                console.log(`📋 Available projects: ${projects.slice(0, 3).map(p => p.name).join(', ')}${projects.length > 3 ? '...' : ''}`);
-            }
+            // Success logging suppressed for MCP mode
 
             return {
                 success: true,

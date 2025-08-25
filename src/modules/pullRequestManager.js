@@ -68,7 +68,7 @@ export class PullRequestManager {
     async initialize() {
         try {
             this.gitApi = await this.webApi.getGitApi();
-            console.log('✅ Pull Request Manager initialized');
+            // Initialization logging suppressed for MCP mode
         } catch (error) {
             throw new Error(`Failed to initialize Pull Request Manager: ${extractErrorMessage(error)}`);
         }
@@ -171,10 +171,16 @@ export class PullRequestManager {
      */
     async getPullRequest(repositoryId, pullRequestId, includeDetails = true) {
         try {
-            console.log(`🔄 Retrieving pull request ${pullRequestId} from repository ${repositoryId}...`);
+            // Ensure pullRequestId is a number for Azure DevOps API
+            const numericPullRequestId = parseInt(pullRequestId, 10);
+            if (isNaN(numericPullRequestId)) {
+                throw new Error(`Invalid pullRequestId: ${pullRequestId}. Must be a valid number.`);
+            }
+            
+            // Progress logging suppressed for MCP mode
 
             const pullRequest = await retryOperation(async () => {
-                return await this.gitApi.getPullRequest(repositoryId, pullRequestId, this.project);
+                return await this.gitApi.getPullRequest(repositoryId, numericPullRequestId, this.project);
             });
 
             if (!pullRequest) {
@@ -185,9 +191,9 @@ export class PullRequestManager {
             if (includeDetails) {
                 // Get additional details
                 const [commits, workItems, iterations] = await Promise.all([
-                    this.getPullRequestCommits(repositoryId, pullRequestId),
-                    this.getPullRequestWorkItems(repositoryId, pullRequestId),
-                    this.getPullRequestIterations(repositoryId, pullRequestId)
+                    this.getPullRequestCommits(repositoryId, numericPullRequestId),
+                    this.getPullRequestWorkItems(repositoryId, numericPullRequestId),
+                    this.getPullRequestIterations(repositoryId, numericPullRequestId)
                 ]);
 
                 details = { commits, workItems, iterations };
@@ -218,7 +224,7 @@ export class PullRequestManager {
                 ...details
             };
 
-            console.log(`✅ Successfully retrieved pull request: ${result.title}`);
+            // Success logging suppressed for MCP mode
             return result;
 
         } catch (error) {
@@ -360,7 +366,7 @@ export class PullRequestManager {
      */
     async getPullRequestByUrl(url, includeDetails = true) {
         try {
-            console.log(`🔄 Parsing pull request URL: ${url}`);
+            // URL parsing logging suppressed for MCP mode
 
             const parsed = parseAzureDevOpsUrl(url);
             
@@ -530,10 +536,16 @@ export class PullRequestManager {
      */
     async getPullRequestComments(repositoryId, pullRequestId, includeThreads = true) {
         try {
-            console.log(`🔄 Fetching comments for pull request ${pullRequestId}...`);
+            // Ensure pullRequestId is a number for Azure DevOps API
+            const numericPullRequestId = parseInt(pullRequestId, 10);
+            if (isNaN(numericPullRequestId)) {
+                throw new Error(`Invalid pullRequestId: ${pullRequestId}. Must be a valid number.`);
+            }
+            
+            // Comment fetching logging suppressed for MCP mode
 
             const threads = await retryOperation(async () => {
-                return await this.gitApi.getThreads(repositoryId, pullRequestId, this.project);
+                return await this.gitApi.getThreads(repositoryId, numericPullRequestId, this.project);
             });
 
             const comments = [];
@@ -569,7 +581,7 @@ export class PullRequestManager {
                 }
             }
 
-            console.log(`✅ Successfully retrieved ${comments.length} comment threads`);
+            // Success logging suppressed for MCP mode
             return comments;
 
         } catch (error) {
@@ -760,10 +772,16 @@ export class PullRequestManager {
      */
     async addFileComment(repositoryId, pullRequestId, filePath, comment, line = null, position = null) {
         try {
-            console.log(`🔄 Adding comment to file ${filePath} in pull request ${pullRequestId}...`);
+            // Ensure pullRequestId is a number for Azure DevOps API
+            const numericPullRequestId = parseInt(pullRequestId, 10);
+            if (isNaN(numericPullRequestId)) {
+                throw new Error(`Invalid pullRequestId: ${pullRequestId}. Must be a valid number.`);
+            }
+            
+            // Comment addition logging suppressed for MCP mode
 
             // Get the latest iteration to ensure we're commenting on the current version
-            const iterations = await this.getPullRequestIterations(repositoryId, pullRequestId);
+            const iterations = await this.getPullRequestIterations(repositoryId, numericPullRequestId);
             const latestIteration = iterations[iterations.length - 1];
 
             if (!latestIteration) {
@@ -787,7 +805,7 @@ export class PullRequestManager {
             };
 
             const createdThread = await retryOperation(async () => {
-                return await this.gitApi.createThread(newThread, repositoryId, pullRequestId, this.project);
+                return await this.gitApi.createThread(newThread, repositoryId, numericPullRequestId, this.project);
             });
 
             const result = {
@@ -801,7 +819,7 @@ export class PullRequestManager {
                 publishedDate: createdThread.comments[0].publishedDate
             };
 
-            console.log(`✅ Successfully added comment to file: ${filePath}`);
+            // Success logging suppressed for MCP mode
             return result;
 
         } catch (error) {
@@ -910,10 +928,16 @@ export class PullRequestManager {
      */
     async replyToComment(repositoryId, pullRequestId, parentCommentId, reply) {
         try {
-            console.log(`🔄 Replying to comment ${parentCommentId} in pull request ${pullRequestId}...`);
+            // Ensure pullRequestId is a number for Azure DevOps API
+            const numericPullRequestId = parseInt(pullRequestId, 10);
+            if (isNaN(numericPullRequestId)) {
+                throw new Error(`Invalid pullRequestId: ${pullRequestId}. Must be a valid number.`);
+            }
+            
+            // Reply logging suppressed for MCP mode
 
             // First, find the thread containing the parent comment
-            const threads = await this.gitApi.getThreads(repositoryId, pullRequestId, this.project);
+            const threads = await this.gitApi.getThreads(repositoryId, numericPullRequestId, this.project);
             
             let targetThread = null;
             for (const thread of threads) {
@@ -934,7 +958,7 @@ export class PullRequestManager {
             };
 
             const createdComment = await retryOperation(async () => {
-                return await this.gitApi.createComment(newComment, repositoryId, pullRequestId, targetThread.id, this.project);
+                return await this.gitApi.createComment(newComment, repositoryId, numericPullRequestId, targetThread.id, this.project);
             });
 
             const result = {
@@ -946,7 +970,7 @@ export class PullRequestManager {
                 publishedDate: createdComment.publishedDate
             };
 
-            console.log(`✅ Successfully replied to comment`);
+            // Success logging suppressed for MCP mode
             return result;
 
         } catch (error) {
@@ -1120,7 +1144,13 @@ export class PullRequestManager {
      */
     async getPullRequestCommits(repositoryId, pullRequestId) {
         try {
-            const iterations = await this.gitApi.getPullRequestIterations(repositoryId, pullRequestId, this.project);
+            // Ensure pullRequestId is a number for Azure DevOps API
+            const numericPullRequestId = parseInt(pullRequestId, 10);
+            if (isNaN(numericPullRequestId)) {
+                throw new Error(`Invalid pullRequestId: ${pullRequestId}. Must be a valid number.`);
+            }
+            
+            const iterations = await this.gitApi.getPullRequestIterations(repositoryId, numericPullRequestId, this.project);
             
             if (!iterations || iterations.length === 0) {
                 return [];
@@ -1130,7 +1160,7 @@ export class PullRequestManager {
             const latestIteration = iterations[iterations.length - 1];
             const commits = await this.gitApi.getPullRequestIterationCommits(
                 repositoryId, 
-                pullRequestId, 
+                numericPullRequestId, 
                 latestIteration.id, 
                 this.project
             );
@@ -1351,7 +1381,13 @@ export class PullRequestManager {
      */
     async getPullRequestWorkItems(repositoryId, pullRequestId) {
         try {
-            const workItemRefs = await this.gitApi.getPullRequestWorkItemRefs(repositoryId, pullRequestId, this.project);
+            // Ensure pullRequestId is a number for Azure DevOps API
+            const numericPullRequestId = parseInt(pullRequestId, 10);
+            if (isNaN(numericPullRequestId)) {
+                throw new Error(`Invalid pullRequestId: ${pullRequestId}. Must be a valid number.`);
+            }
+            
+            const workItemRefs = await this.gitApi.getPullRequestWorkItemRefs(repositoryId, numericPullRequestId, this.project);
             
             return workItemRefs.map(ref => ({
                 id: ref.id,
@@ -1577,7 +1613,13 @@ export class PullRequestManager {
      */
     async getPullRequestIterations(repositoryId, pullRequestId) {
         try {
-            const iterations = await this.gitApi.getPullRequestIterations(repositoryId, pullRequestId, this.project);
+            // Ensure pullRequestId is a number for Azure DevOps API
+            const numericPullRequestId = parseInt(pullRequestId, 10);
+            if (isNaN(numericPullRequestId)) {
+                throw new Error(`Invalid pullRequestId: ${pullRequestId}. Must be a valid number.`);
+            }
+            
+            const iterations = await this.gitApi.getPullRequestIterations(repositoryId, numericPullRequestId, this.project);
             
             return iterations.map(iteration => ({
                 id: iteration.id,
@@ -1904,6 +1946,12 @@ export class PullRequestManager {
      */
     async updateCommentThreadStatus(repositoryId, pullRequestId, threadId, status) {
         try {
+            // Ensure pullRequestId is a number for Azure DevOps API
+            const numericPullRequestId = parseInt(pullRequestId, 10);
+            if (isNaN(numericPullRequestId)) {
+                throw new Error(`Invalid pullRequestId: ${pullRequestId}. Must be a valid number.`);
+            }
+            
             console.log(`🔄 Updating comment thread ${threadId} status to ${status}...`);
 
             const thread = {
@@ -1911,7 +1959,7 @@ export class PullRequestManager {
             };
 
             const updatedThread = await retryOperation(async () => {
-                return await this.gitApi.updateThread(thread, repositoryId, pullRequestId, threadId, this.project);
+                return await this.gitApi.updateThread(thread, repositoryId, numericPullRequestId, threadId, this.project);
             });
 
             console.log(`✅ Successfully updated comment thread status`);

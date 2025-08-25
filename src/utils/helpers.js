@@ -223,7 +223,7 @@ export async function retryOperation(operation, maxRetries = 3, baseDelay = 1000
             }
             
             const delay = baseDelay * Math.pow(2, attempt - 1);
-            console.warn(`Operation failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
+            // Retry logging suppressed for MCP mode
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }

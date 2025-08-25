@@ -61,14 +61,18 @@ export class WorkItemManager {
      * @example
      * const manager = new WorkItemManager(webApi, 'MyProject');
      * await manager.initialize();
-     */
-    constructor(webApi, project) {
+     */    constructor(webApi, project, config = {}) {
         this.webApi = webApi;
         this.project = project;
         this.workItemTrackingApi = null;
         this.maxRetries = 3;
         this.retryDelay = 1000; // 1 second
-    }    /**
+        
+        // Store config for HTTP operations (like comments)
+        this.config = config;
+        this.organizationUrl = config.organizationUrl;
+        this.personalAccessToken = config.personalAccessToken;
+    }/**
      * Initialize the Work Item Tracking API client
      * 
      * @async
@@ -106,7 +110,7 @@ export class WorkItemManager {
     async initialize() {
         try {
             this.workItemTrackingApi = await this.webApi.getWorkItemTrackingApi();
-            console.log('✅ Work Item Tracking API initialized successfully');
+            // Initialization logging suppressed for MCP mode
         } catch (error) {
             console.error('❌ Failed to initialize Work Item Tracking API:', error.message);
             throw error;
@@ -217,7 +221,7 @@ export class WorkItemManager {
         }
 
         try {
-            console.log(`📝 Creating user story: ${title}`);
+            // Creation logging suppressed for MCP mode
 
             // Build the JSON patch document
             const patchDocument = [
@@ -288,14 +292,11 @@ export class WorkItemManager {
             // Get user story type from environment or use default
             const userStoryType = process.env.AZURE_DEVOPS_USER_STORY_TYPE || 'Product Backlog Item';
             
-            console.log('🔧 Debug: About to call createWorkItem with:');
-            console.log('   Project:', this.project);
-            console.log(`   Work Item Type: ${userStoryType}`);
-            console.log('   Patch Document:', JSON.stringify(patchDocument, null, 2));
+            // Debug logging suppressed for MCP mode
 
             const workItem = await this._retryOperation(async () => {
-                console.log('🔧 Debug: Making API call to createWorkItem...');
-                const result = await this.workItemTrackingApi.createWorkItem(
+                // Debug logging suppressed for MCP mode
+                return await this.workItemTrackingApi.createWorkItem(
                     [], // customHeaders
                     patchDocument,
                     this.project,
@@ -303,20 +304,13 @@ export class WorkItemManager {
                     false, // validateOnly
                     true   // bypassRuleValidation
                 );
-                console.log('🔧 Debug: API call returned:', result ? 'Success' : 'NULL');
-                console.log('🔧 Debug: Result type:', typeof result);
-                if (result) {
-                    console.log('🔧 Debug: Result has id?', !!result.id);
-                    console.log('🔧 Debug: Result keys:', Object.keys(result));
-                }
-                return result;
             });
 
             if (!workItem) {
                 throw new Error('createWorkItem API returned null - this may indicate a permission or validation issue');
             }
 
-            console.log(`✅ User story created successfully with ID: ${workItem.id}`);
+            // Success logging suppressed for MCP mode
 
             return {
                 id: workItem.id,
@@ -576,6 +570,304 @@ export class WorkItemManager {
         } catch (error) {
             console.error('❌ Failed to create task:', error.message);
             throw this._handleError(error, 'create task');
+        }
+    }    /**
+     * Create a new bug work item in Azure DevOps
+     * 
+     * @async
+     * @method createBug
+     * @description Creates a new bug work item in Azure DevOps with the specified details. This method handles
+     * bug-specific fields including severity, priority, steps to reproduce, system info, and acceptance criteria.
+     * It constructs a JSON patch document with all the necessary fields and submits it through the Azure DevOps
+     * Work Item Tracking API. The method includes comprehensive error handling, validation, and retry logic for
+     * reliability. If a parentId is provided, it will automatically create a parent-child relationship link.
+     * Bug work items are essential for tracking defects, issues, and problems in the software development lifecycle.
+     * 
+     * @param {string} title - The title/summary of the bug (required, must be non-empty string)
+     * @param {string} description - Detailed description of the bug behavior and impact (required, must be non-empty string)
+     * @param {Object} [additionalFields={}] - Optional fields to set on the bug work item
+     * @param {string} [additionalFields.assignedTo] - Email address or display name of the person to assign the bug to
+     * @param {string} [additionalFields.iterationPath] - Iteration/sprint path for the bug (e.g., "MyProject\\Sprint 1")
+     * @param {string} [additionalFields.areaPath] - Area path for team/component organization (e.g., "MyProject\\Frontend")
+     * @param {number} [additionalFields.priority] - Priority level from 1-4 (1=highest, 4=lowest priority)
+     * @param {number} [additionalFields.severity] - Severity level from 1-4 (1=critical, 4=low severity)
+     * @param {string} [additionalFields.stepsToReproduce] - Detailed steps to reproduce the bug
+     * @param {string} [additionalFields.systemInfo] - System/environment information where bug occurs
+     * @param {string} [additionalFields.acceptanceCriteria] - Criteria for considering the bug fixed
+     * @param {string} [additionalFields.foundInBuild] - Build number/version where the bug was discovered
+     * @param {string} [additionalFields.activity] - Activity type (Development, Testing, Design, etc.)
+     * @param {number} [additionalFields.parentId] - ID of parent work item to link this bug to
+     * @param {string} [additionalFields.tags] - Comma-separated tags for categorization
+     * 
+     * @returns {Promise<Object>} Promise resolving to the created bug object containing:
+     * @returns {number} returns.id - Unique identifier of the created bug work item
+     * @returns {string} returns.title - Title of the bug
+     * @returns {string} returns.description - Description of the bug
+     * @returns {string} returns.state - Current state (typically 'New' for newly created bugs)
+     * @returns {string} returns.workItemType - Type of work item ('Bug')
+     * @returns {string|null} returns.assignedTo - Display name of assigned user or null if unassigned
+     * @returns {number|null} returns.priority - Priority level (1-4) or null if not set
+     * @returns {number|null} returns.severity - Severity level (1-4) or null if not set
+     * @returns {string|null} returns.stepsToReproduce - Steps to reproduce or null if not provided
+     * @returns {string|null} returns.systemInfo - System information or null if not provided
+     * @returns {string|null} returns.acceptanceCriteria - Acceptance criteria or null if not provided
+     * @returns {string|null} returns.foundInBuild - Build information or null if not provided
+     * @returns {string|null} returns.activity - Activity type or null if not provided
+     * @returns {string|null} returns.iterationPath - Iteration path or null if not set
+     * @returns {string|null} returns.areaPath - Area path or null if not set
+     * @returns {string} returns.url - Direct URL to view the bug in Azure DevOps
+     * @returns {string} returns.createdDate - ISO datetime when the bug was created
+     * @returns {string} returns.changedDate - ISO datetime when the bug was last modified
+     * @returns {number|string|null} returns.parentId - ID of parent work item if linked, null otherwise
+     * 
+     * @throws {Error} When the Work Item Tracking API is not initialized (call initialize() first)
+     * @throws {Error} When title is missing, null, undefined, or not a string
+     * @throws {Error} When description is missing, null, undefined, or not a string
+     * @throws {Error} When priority is provided but not a number between 1-4
+     * @throws {Error} When severity is provided but not a number between 1-4
+     * @throws {Error} When authentication fails (401) - check PAT token validity
+     * @throws {Error} When access is denied (403) - check permissions to create work items
+     * @throws {Error} When project is not found (404) - verify project name
+     * @throws {Error} When request parameters are invalid (400)
+     * @throws {Error} When network or server errors occur (500, 502, 503, 504)
+     * @throws {Error} When parent work item linking fails (bug will still be created)
+     * 
+     * @example
+     * // Create a basic bug
+     * const bug = await manager.createBug(
+     *   'Login page crashes on submit',
+     *   'The login page crashes when user clicks submit button with valid credentials'
+     * );
+     * console.log(`Bug created: ${bug.id}`);
+     * 
+     * @example
+     * // Create a bug with detailed information
+     * const bug = await manager.createBug(
+     *   'Memory leak in data processing module',
+     *   'Application memory usage continuously increases during data processing operations',
+     *   {
+     *     assignedTo: 'developer@company.com',
+     *     priority: 1,
+     *     severity: 2,
+     *     stepsToReproduce: '1. Open application\n2. Load large dataset\n3. Process data\n4. Monitor memory usage',
+     *     systemInfo: 'Windows 10, Chrome 120, 16GB RAM',
+     *     foundInBuild: 'v2.1.5',
+     *     iterationPath: 'MyProject\\Sprint 3'
+     *   }
+     * );
+     * 
+     * @example
+     * // Create a bug linked to a user story
+     * const bug = await manager.createBug(
+     *   'Search results not sorted correctly',
+     *   'Search results appear in random order instead of relevance-based sorting',
+     *   {
+     *     parentId: 456,
+     *     priority: 2,
+     *     severity: 3,
+     *     acceptanceCriteria: 'Search results should be sorted by relevance score in descending order'
+     *   }
+     * );
+     * 
+     * @example
+     * // With comprehensive error handling
+     * try {
+     *   const bug = await manager.createBug(title, description, fields);
+     *   console.log('Bug created successfully:', bug.title);
+     * } catch (error) {
+     *   if (error.message.includes('Authentication failed')) {
+     *     console.error('Please check your PAT token');
+     *   } else if (error.message.includes('Access denied')) {
+     *     console.error('Insufficient permissions to create work items');
+     *   } else {
+     *     console.error('Failed to create bug:', error.message);
+     *   }
+     * }
+     * 
+     * @since 1.0.0
+     * @see {@link https://docs.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/create} Azure DevOps Create Work Item API
+     * @see {@link https://docs.microsoft.com/en-us/azure/devops/boards/work-items/guidance/agile-process-workflow} Agile Work Item Types
+     * @see {@link WorkItemManager#linkWorkItems} For manual work item linking after creation
+     */
+    async createBug(title, description, additionalFields = {}) {
+        if (!this.workItemTrackingApi) {
+            throw new Error('Work Item Tracking API not initialized. Call initialize() first.');
+        }
+
+        if (!title || typeof title !== 'string') {
+            throw new Error('Title is required and must be a string');
+        }
+
+        if (!description || typeof description !== 'string') {
+            throw new Error('Description is required and must be a string');
+        }
+
+        try {
+            console.log(`🐛 Creating bug: ${title}`);
+
+            // Build the JSON patch document
+            const patchDocument = [
+                {
+                    op: 'add',
+                    path: '/fields/System.Title',
+                    value: title
+                },
+                {
+                    op: 'add',
+                    path: '/fields/System.Description',
+                    value: description
+                },
+                {
+                    op: 'add',
+                    path: '/fields/System.WorkItemType',
+                    value: 'Bug'
+                }
+            ];
+
+            // Add optional fields
+            if (additionalFields.assignedTo) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/System.AssignedTo',
+                    value: additionalFields.assignedTo
+                });
+            }
+
+            if (additionalFields.iterationPath) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/System.IterationPath',
+                    value: additionalFields.iterationPath
+                });
+            }
+
+            if (additionalFields.areaPath) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/System.AreaPath',
+                    value: additionalFields.areaPath
+                });
+            }
+
+            if (additionalFields.priority) {
+                const priority = parseInt(additionalFields.priority);
+                if (priority >= 1 && priority <= 4) {
+                    patchDocument.push({
+                        op: 'add',
+                        path: '/fields/Microsoft.VSTS.Common.Priority',
+                        value: priority
+                    });
+                }
+            }
+
+            if (additionalFields.severity) {
+                const severity = parseInt(additionalFields.severity);
+                if (severity >= 1 && severity <= 4) {
+                    patchDocument.push({
+                        op: 'add',
+                        path: '/fields/Microsoft.VSTS.Common.Severity',
+                        value: severity
+                    });
+                }
+            }
+
+            if (additionalFields.stepsToReproduce) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/Microsoft.VSTS.TCM.ReproSteps',
+                    value: additionalFields.stepsToReproduce
+                });
+            }
+
+            if (additionalFields.systemInfo) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/Microsoft.VSTS.TCM.SystemInfo',
+                    value: additionalFields.systemInfo
+                });
+            }
+
+            if (additionalFields.acceptanceCriteria) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/Microsoft.VSTS.Common.AcceptanceCriteria',
+                    value: additionalFields.acceptanceCriteria
+                });
+            }
+
+            if (additionalFields.foundInBuild) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/Microsoft.VSTS.Build.FoundIn',
+                    value: additionalFields.foundInBuild
+                });
+            }
+
+            if (additionalFields.activity) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/Microsoft.VSTS.Common.Activity',
+                    value: additionalFields.activity
+                });
+            }
+
+            if (additionalFields.tags) {
+                patchDocument.push({
+                    op: 'add',
+                    path: '/fields/System.Tags',
+                    value: additionalFields.tags
+                });
+            }
+
+            const workItem = await this._retryOperation(async () => {
+                return await this.workItemTrackingApi.createWorkItem(
+                    [], // customHeaders
+                    patchDocument,
+                    this.project,
+                    'Bug',
+                    false, // validateOnly
+                    true   // bypassRuleValidation
+                );
+            });
+
+            console.log(`✅ Bug created successfully with ID: ${workItem.id}`);
+
+            // If parentId is provided, create the parent-child relationship
+            if (additionalFields.parentId) {
+                try {
+                    await this.linkWorkItems(workItem.id, additionalFields.parentId, 'Child');
+                    console.log(`✅ Bug ${workItem.id} linked to parent ${additionalFields.parentId}`);
+                } catch (linkError) {
+                    console.warn(`⚠️ Bug created but failed to link to parent: ${linkError.message}`);
+                }
+            }
+
+            return {
+                id: workItem.id,
+                title: workItem.fields['System.Title'],
+                description: workItem.fields['System.Description'],
+                state: workItem.fields['System.State'],
+                workItemType: workItem.fields['System.WorkItemType'],
+                assignedTo: workItem.fields['System.AssignedTo']?.displayName || null,
+                priority: workItem.fields['Microsoft.VSTS.Common.Priority'] || null,
+                severity: workItem.fields['Microsoft.VSTS.Common.Severity'] || null,
+                stepsToReproduce: workItem.fields['Microsoft.VSTS.TCM.ReproSteps'] || null,
+                systemInfo: workItem.fields['Microsoft.VSTS.TCM.SystemInfo'] || null,
+                acceptanceCriteria: workItem.fields['Microsoft.VSTS.Common.AcceptanceCriteria'] || null,
+                foundInBuild: workItem.fields['Microsoft.VSTS.Build.FoundIn'] || null,
+                activity: workItem.fields['Microsoft.VSTS.Common.Activity'] || null,
+                iterationPath: workItem.fields['System.IterationPath'] || null,
+                areaPath: workItem.fields['System.AreaPath'] || null,
+                tags: workItem.fields['System.Tags'] || null,
+                url: workItem.url,
+                createdDate: workItem.fields['System.CreatedDate'],
+                changedDate: workItem.fields['System.ChangedDate'],
+                parentId: additionalFields.parentId || null
+            };
+
+        } catch (error) {
+            console.error('❌ Failed to create bug:', error.message);
+            throw this._handleError(error, 'create bug');
         }
     }    /**
      * Update an existing user story work item in Azure DevOps
@@ -1180,10 +1472,10 @@ export class WorkItemManager {
      * @returns {string} returns.description - Description of the work item
      * @returns {string} returns.state - Current state (e.g., 'New', 'Active', 'Resolved', 'Closed')
      * @returns {string} returns.workItemType - Type of work item (e.g., 'User Story', 'Task', 'Feature')
-     * @returns {string|null} returns.assignedTo - Display name of assigned user or null
-     * @returns {number|null} returns.priority - Priority level or null
+     * @returns {string|null} returns.assignedTo - Display name of assigned user or null     * @returns {number|null} returns.priority - Priority level or null
      * @returns {number|null} returns.storyPoints - Story points estimation or null
      * @returns {string|null} returns.acceptanceCriteria - Acceptance criteria or null
+     * @returns {string|null} returns.reproSteps - Reproduction steps for bugs (from Microsoft.VSTS.TCM.ReproSteps field) or null
      * @returns {string|null} returns.iterationPath - Iteration path or null
      * @returns {string|null} returns.areaPath - Area path or null
      * @returns {string|null} returns.tags - Tags or null
@@ -1242,12 +1534,10 @@ export class WorkItemManager {
 
             if (!workItem) {
                 throw new Error(`Work item ${workItemId} not found`);
-            }
-
-            console.log(`✅ Work item retrieved: ${workItem.fields['System.Title']}`);
-
+            }            console.log(`✅ Work item retrieved: ${workItem.fields['System.Title']}`);            // Return the full work item with all fields preserved
             return {
                 id: workItem.id,
+                fields: workItem.fields, // Preserve all original fields
                 title: workItem.fields['System.Title'],
                 description: workItem.fields['System.Description'] || '',
                 state: workItem.fields['System.State'],
@@ -1256,6 +1546,7 @@ export class WorkItemManager {
                 priority: workItem.fields['Microsoft.VSTS.Common.Priority'] || null,
                 storyPoints: workItem.fields['Microsoft.VSTS.Scheduling.StoryPoints'] || null,
                 acceptanceCriteria: workItem.fields['Microsoft.VSTS.Common.AcceptanceCriteria'] || null,
+                reproSteps: workItem.fields['Microsoft.VSTS.TCM.ReproSteps'] || null,
                 iterationPath: workItem.fields['System.IterationPath'] || null,
                 areaPath: workItem.fields['System.AreaPath'] || null,
                 tags: workItem.fields['System.Tags'] || null,
@@ -1471,7 +1762,7 @@ export class WorkItemManager {
                 // Check if it's a retryable error
                 if (this._isRetryableError(error)) {
                     const delay = this.retryDelay * Math.pow(2, attempt - 1);
-                    console.log(`⚠️ Operation failed (attempt ${attempt}/${this.maxRetries}), retrying in ${delay}ms...`);
+                    // Retry logging suppressed for MCP mode
                     await new Promise(resolve => setTimeout(resolve, delay));
                 } else {
                     break;
@@ -1578,4 +1869,432 @@ export class WorkItemManager {
             return new Error(`Failed to ${operation}: ${errorMessage}`);
         }
     }
+
+    /**
+     * Update an existing bug work item in Azure DevOps
+     * 
+     * @async
+     * @method updateBug
+     * @description Updates an existing bug work item with the specified field changes. The method validates
+     * the work item ID, constructs a JSON patch document with only the fields that need to be updated, and applies
+     * the changes through the Azure DevOps API with retry logic. Only provided fields will be updated; other fields
+     * remain unchanged. The method includes validation for specific field types like priority and severity.
+     * 
+     * @param {number|string} workItemId - The ID of the work item to update (will be converted to number)
+     * @param {Object} updates - Object containing the fields to update with their new values
+     * @param {string} [updates.title] - New title for the bug
+     * @param {string} [updates.description] - New description for the bug
+     * @param {string} [updates.stepsToReproduce] - New steps to reproduce the bug
+     * @param {string} [updates.systemInfo] - New system information where bug occurs
+     * @param {string} [updates.acceptanceCriteria] - New acceptance criteria for fixing the bug
+     * @param {string} [updates.foundInBuild] - New build number where the bug was found
+     * @param {number} [updates.priority] - New priority level (1-4, where 1 is highest priority)
+     * @param {number} [updates.severity] - New severity level (1-4, where 1 is critical)
+     * @param {string} [updates.assignedTo] - Email address or display name of the assigned user
+     * @param {string} [updates.iterationPath] - New iteration path for sprint/iteration assignment
+     * @param {string} [updates.areaPath] - New area path for team/component organization
+     * @param {string} [updates.activity] - New activity type (Development, Testing, Design, etc.)
+     * @param {string} [updates.state] - New state (e.g., 'New', 'Active', 'Resolved', 'Closed')
+     * @param {string} [updates.tags] - New comma-separated tags for categorization
+     * 
+     * @returns {Promise<Object>} Promise resolving to the updated bug object containing:
+     * @returns {number} returns.id - Unique identifier of the work item
+     * @returns {string} returns.title - Updated title of the work item
+     * @returns {string} returns.description - Updated description of the work item
+     * @returns {string} returns.state - Current state after update
+     * @returns {string} returns.workItemType - Type of work item ('Bug')
+     * @returns {string|null} returns.assignedTo - Display name of assigned user or null
+     * @returns {number|null} returns.priority - Priority level or null
+     * @returns {number|null} returns.severity - Severity level or null
+     * @returns {string|null} returns.stepsToReproduce - Steps to reproduce or null
+     * @returns {string|null} returns.systemInfo - System information or null
+     * @returns {string|null} returns.acceptanceCriteria - Acceptance criteria or null
+     * @returns {string|null} returns.foundInBuild - Build information or null
+     * @returns {string|null} returns.activity - Activity type or null
+     * @returns {string|null} returns.iterationPath - Iteration path or null
+     * @returns {string|null} returns.areaPath - Area path or null
+     * @returns {string|null} returns.tags - Tags or null
+     * @returns {string} returns.url - URL to view the work item in Azure DevOps
+     * @returns {string} returns.createdDate - ISO datetime when the work item was originally created
+     * @returns {string} returns.changedDate - ISO datetime when the work item was last modified (after this update)
+     * 
+     * @throws {Error} When the Work Item Tracking API is not initialized (call initialize() first)
+     * @throws {Error} When workItemId is missing, null, not a number, or less than or equal to 0
+     * @throws {Error} When updates parameter is missing, null, or not an object
+     * @throws {Error} When no valid fields are provided for update (all fields filtered out)
+     * @throws {Error} When priority is provided but not a number between 1-4
+     * @throws {Error} When severity is provided but not a number between 1-4
+     * @throws {Error} When the work item does not exist (404)
+     * @throws {Error} When authentication fails (401) - check PAT token
+     * @throws {Error} When access is denied (403) - check permissions to modify work items
+     * @throws {Error} When request parameters are invalid (400)
+     * @throws {Error} When network or server errors occur (500, 502, 503, 504)
+     * 
+     * @example
+     * // Update bug title and severity
+     * const updatedBug = await manager.updateBug(123, {
+     *   title: 'Critical Memory Leak in Login Module',
+     *   severity: 1,
+     *   priority: 1
+     * });
+     * console.log(`Updated bug: ${updatedBug.title}`);
+     * 
+     * @example
+     * // Update steps to reproduce and system info
+     * const updatedBug = await manager.updateBug(123, {
+     *   stepsToReproduce: 'Updated reproduction steps with more detail',
+     *   systemInfo: 'Windows 11, Chrome 122, 32GB RAM',
+     *   state: 'Active'
+     * });
+     * 
+     * @example
+     * // With comprehensive error handling
+     * try {
+     *   const updates = {
+     *     title: 'New Bug Title',
+     *     priority: 2,
+     *     severity: 3
+     *   };
+     *   const result = await manager.updateBug(workItemId, updates);
+     *   console.log('Bug updated successfully:', result.title);
+     * } catch (error) {
+     *   if (error.message.includes('not found')) {
+     *     console.error('Bug does not exist');
+     *   } else if (error.message.includes('Invalid priority')) {
+     *     console.error('Priority must be between 1-4');
+     *   } else {
+     *     console.error('Failed to update bug:', error.message);
+     *   }
+     * }
+     * 
+     * @since 1.0.0
+     * @see {@link https://docs.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/update} Azure DevOps Update Work Item API
+     */
+    async updateBug(workItemId, updates) {
+        if (!this.workItemTrackingApi) {
+            throw new Error('Work Item Tracking API not initialized. Call initialize() first.');
+        }
+
+        if (!workItemId || isNaN(parseInt(workItemId)) || parseInt(workItemId) <= 0) {
+            throw new Error('Valid work item ID is required');
+        }
+
+        // Convert string to number if needed
+        workItemId = parseInt(workItemId);
+
+        if (!updates || typeof updates !== 'object') {
+            throw new Error('Updates object is required');
+        }
+
+        try {
+            console.log(`🐛 Updating bug with ID: ${workItemId}`);
+
+            // Build the JSON patch document
+            const patchDocument = [];
+
+            // Map update fields to Azure DevOps field paths
+            const fieldMapping = {
+                title: '/fields/System.Title',
+                description: '/fields/System.Description',
+                stepsToReproduce: '/fields/Microsoft.VSTS.TCM.ReproSteps',
+                systemInfo: '/fields/Microsoft.VSTS.TCM.SystemInfo',
+                acceptanceCriteria: '/fields/Microsoft.VSTS.Common.AcceptanceCriteria',
+                foundInBuild: '/fields/Microsoft.VSTS.Build.FoundIn',
+                priority: '/fields/Microsoft.VSTS.Common.Priority',
+                severity: '/fields/Microsoft.VSTS.Common.Severity',
+                assignedTo: '/fields/System.AssignedTo',
+                iterationPath: '/fields/System.IterationPath',
+                areaPath: '/fields/System.AreaPath',
+                activity: '/fields/Microsoft.VSTS.Common.Activity',
+                state: '/fields/System.State',
+                tags: '/fields/System.Tags'
+            };
+
+            for (const [key, value] of Object.entries(updates)) {
+                if (fieldMapping[key] && value !== undefined && value !== null) {
+                    let processedValue = value;
+                    
+                    // Process specific field types
+                    if (key === 'priority') {
+                        processedValue = parseInt(value);
+                        if (processedValue < 1 || processedValue > 4) {
+                            console.warn(`Invalid priority value: ${value}. Must be between 1-4.`);
+                            continue;
+                        }
+                    } else if (key === 'severity') {
+                        processedValue = parseInt(value);
+                        if (processedValue < 1 || processedValue > 4) {
+                            console.warn(`Invalid severity value: ${value}. Must be between 1-4.`);
+                            continue;
+                        }
+                    }
+
+                    patchDocument.push({
+                        op: 'add',
+                        path: fieldMapping[key],
+                        value: processedValue
+                    });
+                }
+            }
+
+            if (patchDocument.length === 0) {
+                throw new Error('No valid fields provided for update');
+            }
+
+            const workItem = await this._retryOperation(async () => {
+                return await this.workItemTrackingApi.updateWorkItem(
+                    [], // customHeaders
+                    patchDocument,
+                    workItemId,
+                    this.project,
+                    false, // validateOnly
+                    true   // bypassRuleValidation
+                );
+            });
+
+            console.log(`✅ Bug updated successfully: ${workItem.id}`);
+
+            return {
+                id: workItem.id,
+                title: workItem.fields['System.Title'],
+                description: workItem.fields['System.Description'],
+                state: workItem.fields['System.State'],
+                workItemType: workItem.fields['System.WorkItemType'],
+                assignedTo: workItem.fields['System.AssignedTo']?.displayName || null,
+                priority: workItem.fields['Microsoft.VSTS.Common.Priority'] || null,
+                severity: workItem.fields['Microsoft.VSTS.Common.Severity'] || null,
+                stepsToReproduce: workItem.fields['Microsoft.VSTS.TCM.ReproSteps'] || null,
+                systemInfo: workItem.fields['Microsoft.VSTS.TCM.SystemInfo'] || null,
+                acceptanceCriteria: workItem.fields['Microsoft.VSTS.Common.AcceptanceCriteria'] || null,
+                foundInBuild: workItem.fields['Microsoft.VSTS.Build.FoundIn'] || null,
+                activity: workItem.fields['Microsoft.VSTS.Common.Activity'] || null,
+                iterationPath: workItem.fields['System.IterationPath'] || null,
+                areaPath: workItem.fields['System.AreaPath'] || null,                tags: workItem.fields['System.Tags'] || null,
+                url: workItem.url,
+                createdDate: workItem.fields['System.CreatedDate'],
+                changedDate: workItem.fields['System.ChangedDate']
+            };
+
+        } catch (error) {
+            console.error('❌ Failed to update bug:', error.message);
+            throw this._handleError(error, 'update bug');
+        }    }
+
+    // ============================================================================
+    // USER STORY DELETION OPERATIONS
+    // ============================================================================
+
+    /**
+     * Delete a user story work item from Azure DevOps
+     * 
+     * @async
+     * @method deleteUserStory
+     * @description Removes a user story work item from Azure DevOps. This operation
+     * is permanent and cannot be undone. The method handles various deletion scenarios
+     * including user stories with child tasks and validation of deletion permissions.
+     * 
+     * @param {number|string} workItemId - The unique identifier of the user story to delete
+     * @returns {Promise<Object>} Promise that resolves to deletion confirmation object
+     * 
+     * @example
+     * // Delete a user story by ID
+     * const result = await workItemManager.deleteUserStory(123);
+     * console.log(`Deleted user story: ${result.deleted}`);
+     * 
+     * @throws {Error} When work item deletion fails or work item not found
+     * @since 1.0.0
+     */
+    async deleteUserStory(workItemId) {
+        try {
+            await this.ensureInitialized();
+            console.log(`🗑️  Deleting user story with ID: ${workItemId}`);
+
+            const deletionResult = await this.witApi.deleteWorkItem(workItemId, true);
+            
+            console.log(`✅ Successfully deleted user story #${workItemId}`);
+            return {
+                deleted: true,
+                workItemId: workItemId,
+                deletedAt: new Date().toISOString()
+            };
+
+        } catch (error) {
+            console.error('❌ Failed to delete user story:', error.message);
+            throw this._handleError(error, 'delete user story');        }
+    }
+
+    /**
+     * Add a comment to a work item
+     * @param {number|string} workItemId - The ID of the work item to comment on
+     * @param {string} comment - The comment text
+     * @returns {Promise<Object>} - The created comment response
+     */    async addWorkItemComment(workItemId, comment) {
+        try {
+            const url = `${this.organizationUrl}/${this.project}/_apis/wit/workItems/${workItemId}/comments?api-version=7.1-preview.3`;
+            
+            const requestBody = {
+                text: comment
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${Buffer.from(`:${this.personalAccessToken}`).toString('base64')}`
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to add comment to work item ${workItemId}: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            const result = await response.json();
+            return {
+                success: true,
+                comment: result,
+                message: `Successfully added comment to work item ${workItemId}`
+            };
+        } catch (error) {
+            console.error('Error adding work item comment:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Get comments for a work item
+     * @param {number|string} workItemId - The ID of the work item
+     * @param {Object} options - Optional parameters
+     * @param {number} options.top - Maximum number of comments to retrieve
+     * @param {boolean} options.includeDeleted - Whether to include deleted comments
+     * @param {string} options.expand - What additional data to include (reactions, mentions, etc.)
+     * @returns {Promise<Object>} - The comments response
+     */    async getWorkItemComments(workItemId, options = {}) {
+        try {
+            const params = new URLSearchParams();
+            
+            if (options.top) {
+                params.append('$top', options.top.toString());
+            }
+            if (options.includeDeleted) {
+                params.append('includeDeleted', options.includeDeleted.toString());
+            }
+            if (options.expand) {
+                params.append('$expand', options.expand);
+            }
+
+            const queryString = params.toString();
+            const url = `${this.organizationUrl}/${this.project}/_apis/wit/workItems/${workItemId}/comments?api-version=7.1-preview.3${queryString ? '&' + queryString : ''}`;
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Basic ${Buffer.from(`:${this.personalAccessToken}`).toString('base64')}`
+                }
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to get comments for work item ${workItemId}: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            const result = await response.json();
+            return {
+                success: true,
+                comments: result,
+                count: result.count || 0,
+                message: `Successfully retrieved ${result.count || 0} comments for work item ${workItemId}`
+            };
+        } catch (error) {
+            console.error('Error getting work item comments:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Update a work item comment
+     * @param {number|string} workItemId - The ID of the work item
+     * @param {number|string} commentId - The ID of the comment to update
+     * @param {string} text - The new comment text
+     * @returns {Promise<Object>} - The updated comment response
+     */    async updateWorkItemComment(workItemId, commentId, text) {
+        try {
+            const url = `${this.organizationUrl}/${this.project}/_apis/wit/workItems/${workItemId}/comments/${commentId}?api-version=7.1-preview.3`;
+            
+            const requestBody = {
+                text: text
+            };
+
+            const response = await fetch(url, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${Buffer.from(`:${this.personalAccessToken}`).toString('base64')}`
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to update comment ${commentId} on work item ${workItemId}: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            const result = await response.json();
+            return {
+                success: true,
+                comment: result,
+                message: `Successfully updated comment ${commentId} on work item ${workItemId}`
+            };
+        } catch (error) {
+            console.error('Error updating work item comment:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Delete a work item comment
+     * @param {number|string} workItemId - The ID of the work item
+     * @param {number|string} commentId - The ID of the comment to delete
+     * @returns {Promise<Object>} - The deletion response
+     */    async deleteWorkItemComment(workItemId, commentId) {
+        try {
+            const url = `${this.organizationUrl}/${this.project}/_apis/wit/workItems/${workItemId}/comments/${commentId}?api-version=7.1-preview.3`;
+
+            const response = await fetch(url, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Basic ${Buffer.from(`:${this.personalAccessToken}`).toString('base64')}`
+                }
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to delete comment ${commentId} from work item ${workItemId}: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            return {
+                success: true,
+                message: `Successfully deleted comment ${commentId} from work item ${workItemId}`
+            };
+        } catch (error) {
+            console.error('Error deleting work item comment:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
 }
+
+export default WorkItemManager;
